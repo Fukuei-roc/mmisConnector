@@ -1,0 +1,14 @@
+.env
+.env.*
+node_modules/
+.DS_Store
+dist/
+build/
+coverage/
+.cache/
+logs/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+tmp/
+

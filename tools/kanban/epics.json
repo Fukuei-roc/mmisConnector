@@ -1,0 +1,32 @@
+{
+  "epics": [
+    {
+      "name": "專案設置",
+      "definition": "建立 Python CLI 骨架、測試管線與環境變數安全規範。",
+      "stories": [
+        {
+          "name": "Python 技術骨架",
+          "definition": "專案可安裝、執行與測試。"
+        },
+        {
+          "name": "環境變數與密鑰設定",
+          "definition": "帳密只存在未追蹤的 .env，範例檔不含真實值。"
+        }
+      ]
+    },
+    {
+      "name": "MMIS HTTP 未處理通報擷取",
+      "definition": "以 HTTP-only 流程登入 MMIS、套用本段未處理通報查詢並輸出 JSON。",
+      "stories": [
+        {
+          "name": "登入並保持 Session",
+          "definition": "從 .env 讀取帳密，以 requests.Session 登入並保持同一登入狀態。"
+        },
+        {
+          "name": "查詢並輸出故障通報 JSON",
+          "definition": "從首頁進入故障通報管理、套用儲存查詢並解析所有資料列。"
+        }
+      ]
+    }
+  ]
+}

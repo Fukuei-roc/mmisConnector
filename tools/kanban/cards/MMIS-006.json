@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-006",
+  "title": "將啟動指令改為可擴充的功能子命令",
+  "content": "將 CLI 改為 mmis-connector <feature-command> 模式並更新 README。",
+  "stage": "done",
+  "risk": "low",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": false,
+  "createdAt": "2026-09-21",
+  "epic": "MMIS HTTP 未處理通報擷取",
+  "userStory": "查詢並輸出故障通報 JSON",
+  "dependsOn": ["MMIS-005"],
+  "order": 6,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未處理通報擷取/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未處理通報擷取/task-cards/MMIS-006.md", "verificationReport": "ai/artifacts/MMIS HTTP 未處理通報擷取/verification/MMIS-006.md", "pr": ""},
+  "refs": ["src/mmis_connector/cli.py", "tests/test_cli.py", "README.md"],
+  "evidence": {"commands": ["python -m pytest", "python -m compileall -q src tests", "python -m mmis_connector query-unprocessed-fault-notices"], "findings": ["9 tests passed", "Missing and unknown commands return JSON before login", "Live new command returned 16 rows x 17 fields"], "residual": "Existing wrappers must add the required feature subcommand."},
+  "comments": []
+}

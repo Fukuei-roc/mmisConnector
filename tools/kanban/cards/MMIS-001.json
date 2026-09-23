@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-001",
+  "title": "建立 Python 技術骨架",
+  "content": "建立可安裝套件、CLI 與 pytest 設定。",
+  "stage": "done",
+  "risk": "low",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": false,
+  "createdAt": "2026-09-21",
+  "epic": "專案設置",
+  "userStory": "Python 技術骨架",
+  "dependsOn": [],
+  "order": 1,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "", "screenSpec": "", "mockupDecision": "", "taskCard": "", "verificationReport": "", "pr": ""},
+  "refs": ["pyproject.toml", "src/mmis_connector"],
+  "evidence": {"commands": [], "findings": ["Python 3.11.15 available"], "residual": ""},
+  "comments": []
+}

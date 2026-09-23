@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-004",
+  "title": "實作未處理通報查詢與 JSON CLI",
+  "content": "重播 Maximo events、解析資料表並輸出 JSON。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-21",
+  "epic": "MMIS HTTP 未處理通報擷取",
+  "userStory": "查詢並輸出故障通報 JSON",
+  "dependsOn": ["MMIS-003"],
+  "order": 4,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未處理通報擷取/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未處理通報擷取/task-cards/MMIS-004.md", "verificationReport": "ai/artifacts/MMIS HTTP 未處理通報擷取/verification/MMIS-004.md", "pr": ""},
+  "refs": ["src/mmis_connector/query_unprocessed_fault_notices.py", "src/mmis_connector/parser.py", "src/mmis_connector/cli.py", "tests"],
+  "evidence": {"commands": ["python -m pytest", "python -m mmis_connector"], "findings": ["Recorded DOM: 16 rows x 17 fields", "Live CLI: exit 0, parseable JSON, 16 rows x 17 fields"], "residual": "Maximo DOM/event constants may need maintenance after a server UI upgrade."},
+  "comments": []
+}

@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-007",
+  "title": "完整擷取未處理通報的所有分頁",
+  "content": "依 MMIS 回應總筆數逐頁送出下一頁事件，合併並驗證所有未處理通報。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-23",
+  "epic": "MMIS HTTP 未處理通報擷取",
+  "userStory": "查詢並輸出故障通報 JSON",
+  "dependsOn": ["MMIS-006"],
+  "order": 7,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未處理通報擷取/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未處理通報擷取/task-cards/MMIS-007.md", "verificationReport": "ai/artifacts/MMIS HTTP 未處理通報擷取/verification/MMIS-007.md", "pr": ""},
+  "refs": ["src/mmis_connector/query_unprocessed_fault_notices.py", "src/mmis_connector/parser.py", "tests"],
+  "evidence": {"commands": ["python -m pytest", "python -m compileall -q src tests", "python -m pip check", "offline HAR pagination parse", "live query-unprocessed-fault-notices"], "findings": ["19 tests passed", "Recorded responses parsed as 20 + 2 = 22", "Live query returned 21 rows with 17 fields"], "residual": "Pagination parsing depends on current MMIS tCount, fault-notice header, and enabled next-image DOM conventions."},
+  "comments": ["2026-09-23：使用者明確要求依多頁錄製資料修正完整擷取行為。"]
+}

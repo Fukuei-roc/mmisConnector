@@ -1,0 +1,9 @@
+{
+  "name": "monstrare",
+  "private": true,
+  "description": "A gate-based governance workflow for AI coding agents. Nothing ships without evidence.",
+  "license": "MIT",
+  "scripts": {
+    "kanban": "node tools/kanban/server.mjs"
+  }
+}

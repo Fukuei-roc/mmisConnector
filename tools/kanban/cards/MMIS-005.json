@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-005",
+  "title": "建立可擴充的 MMIS 功能模組命名模式",
+  "content": "將 workflow.py 重新命名為具體查詢功能，並同步更新類別、引用與 README。",
+  "stage": "done",
+  "risk": "low",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": false,
+  "createdAt": "2026-09-21",
+  "epic": "MMIS HTTP 未處理通報擷取",
+  "userStory": "查詢並輸出故障通報 JSON",
+  "dependsOn": ["MMIS-004"],
+  "order": 5,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未處理通報擷取/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未處理通報擷取/task-cards/MMIS-005.md", "verificationReport": "ai/artifacts/MMIS HTTP 未處理通報擷取/verification/MMIS-005.md", "pr": ""},
+  "refs": ["src/mmis_connector/query_unprocessed_fault_notices.py", "src/mmis_connector/cli.py", "src/mmis_connector/__init__.py", "README.md"],
+  "evidence": {"commands": ["python -m pytest", "python -m compileall -q src tests", "python -m pip check"], "findings": ["6 tests passed", "New public class import passed", "No stale source or test imports"], "residual": "External callers of the old public class name must update their imports."},
+  "comments": []
+}

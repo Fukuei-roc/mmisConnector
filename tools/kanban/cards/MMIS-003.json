@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-003",
+  "title": "實作 HTTP 登入與記憶體 Session",
+  "content": "從 .env 登入 MMIS，解析 page state 並重用同一 requests.Session。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-21",
+  "epic": "MMIS HTTP 未處理通報擷取",
+  "userStory": "登入並保持 Session",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 3,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未處理通報擷取/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未處理通報擷取/task-cards/MMIS-003.md", "verificationReport": "ai/artifacts/MMIS HTTP 未處理通報擷取/verification/MMIS-003.md", "pr": ""},
+  "refs": ["src/mmis_connector/auth.py", "tests/test_auth.py"],
+  "evidence": {"commands": ["python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git check-ignore -v .env"], "findings": ["HTTP login and in-memory Session passed live validation", "same-origin enforcement and safe error output reviewed"], "residual": "MMIS certificate chain is not trusted by the current Python trust store; local .env uses verify=false."},
+  "comments": []
+}

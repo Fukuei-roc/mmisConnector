@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-002",
+  "title": "建立環境變數與密鑰規範",
+  "content": "建立 .env.example 並確保 .env、cache 與 logs 不被追蹤。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-21",
+  "epic": "專案設置",
+  "userStory": "環境變數與金鑰設定",
+  "dependsOn": [],
+  "order": 2,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "", "screenSpec": "", "mockupDecision": "", "taskCard": "", "verificationReport": "", "pr": ""},
+  "refs": [".gitignore", ".env.example"],
+  "evidence": {"commands": [], "findings": [".env ignored before credential creation"], "residual": ""},
+  "comments": []
+}
