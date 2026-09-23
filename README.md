@@ -2,12 +2,13 @@
 
 MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用 `requests.Session` 登入 MMIS，重播 Maximo HTTP event，解析 XML／CDATA 中的表格資料，並將結果輸出為 UTF-8 JSON。
 
-目前提供兩項功能：
+目前提供三項功能：
 
 | 功能 | CLI 子命令 | 輸入 |
 |---|---|---|
 | 查詢本段未處理故障通報 | `query-unprocessed-fault-notices` | 無 |
 | 查詢動力車日檢(1A)工單 | `query-daily-inspection-work-orders` | 車組／車號、檢修日期 |
+| 以工作單號查詢日檢工單內容 | `query-daily-inspection-work-order-by-number` | 工作單號 |
 
 ## 功能特色
 
@@ -18,7 +19,9 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 - 解析 Maximo XML／CDATA、動態表格 ID、文字欄位與 checkbox。
 - 支援故障通報多頁結果擷取與筆數一致性檢查。
 - 日檢工單支援合法日期驗證、空結果及不完整結果保護。
+- 可依工作單號進入唯一日檢工單，擷取「故障通報管理」，並明確區分空表與解析失敗。
 - 成功與失敗皆輸出可解析 JSON；不輸出密碼、cookie、CSRF token 或 session ID。
+- 所有功能只將 JSON 輸出至 stdout，不建立結果檔案。
 
 ## 系統需求
 
@@ -151,6 +154,41 @@ if ($result.count -eq 0) {
 }
 ```
 
+### 以工作單號查詢日檢工單內容
+
+```powershell
+python -m mmis_connector `
+  query-daily-inspection-work-order-by-number 115-1A-70048
+```
+
+唯一參數 `工作單號` 會先移除前後空白，且只能包含英文字母、數字與連字號。
+
+此功能會：
+
+1. 登入 MMIS 並進入 `ZZ_PMWO1A`「動力車日檢(1A)」。
+2. 切換為「所有記錄」。
+3. 以工作單欄位查詢指定工作單號。
+4. 確認查詢結果恰好一筆，且工作單號與輸入完全相符。
+5. 以 HTTP event 進入工單內容，不啟動瀏覽器。
+6. 擷取「故障通報管理」的故障通報號、發生日期、車組／車號與故障現象。
+7. 將儲存格內的多行故障現象轉成含換行字元的 JSON 字串。
+
+PowerShell 判斷空資料範例：
+
+```powershell
+$result = python -m mmis_connector `
+  query-daily-inspection-work-order-by-number 115-1A-70048 |
+  ConvertFrom-Json
+
+if (-not $result.has_fault_notices) {
+  "此工單沒有故障通報資料"
+} else {
+  $result.records | Select-Object '故障通報號', '發生日期', '車組/車號', '故障現象'
+}
+```
+
+結果只會印到 stdout，不會建立 JSON 或其他結果檔案。找不到工作單、命中多筆或結果不完全相符時會安全失敗，不會自行選擇第一筆。
+
 ## JSON 輸出
 
 ### 未處理故障通報成功結果
@@ -232,6 +270,43 @@ if ($result.count -eq 0) {
 }
 ```
 
+### 日檢工單內容成功結果
+
+有故障通報資料時，exit code 為 `0`：
+
+```json
+{
+  "success": true,
+  "query_name": "以工作單號查詢日檢工單內容",
+  "work_order": "115-1A-70048",
+  "has_fault_notices": true,
+  "count": 1,
+  "records": [
+    {
+      "故障通報號": "範例通報號",
+      "發生日期": "2026/09/23",
+      "車組/車號": "範例車號",
+      "故障現象": "第一行故障現象\n第二行故障現象"
+    }
+  ]
+}
+```
+
+「故障通報管理」表格存在但沒有資料列時，仍是成功的業務結果，exit code 為 `0`：
+
+```json
+{
+  "success": true,
+  "query_name": "以工作單號查詢日檢工單內容",
+  "work_order": "115-1A-70048",
+  "has_fault_notices": false,
+  "count": 0,
+  "records": []
+}
+```
+
+後續程式應優先使用 `has_fault_notices` 判斷是否有資料，也可同時檢查 `count` 與 `records`。
+
 ### 失敗結果
 
 參數、登入、網路、MMIS event 或解析失敗時，exit code 為 `1`：
@@ -268,7 +343,8 @@ JSON stdout
 | `src/mmis_connector/events.py` | 共用 Maximo event POST、CSRF／sequence header、app 切換與 shared-session 錯誤偵測 |
 | `src/mmis_connector/query_unprocessed_fault_notices.py` | 套用未處理通報儲存查詢並擷取所有分頁 |
 | `src/mmis_connector/query_daily_inspection_work_orders.py` | 驗證車號／日期，查詢動力車日檢(1A)工單 |
-| `src/mmis_connector/parser.py` | 展開 XML／CDATA、解析動態 table prefix、表頭、資料列、checkbox 與分頁資訊 |
+| `src/mmis_connector/read_daily_inspection_work_order.py` | 驗證工作單號、進入唯一日檢工單並擷取故障通報管理 |
+| `src/mmis_connector/parser.py` | 展開 XML／CDATA、依 table summary 與動態 prefix 解析表頭、資料列、多行文字、checkbox 與分頁資訊 |
 | `src/mmis_connector/cli.py` | 子命令 dispatch、參數數量檢查、exit code 與 JSON 輸出 |
 | `src/mmis_connector/__init__.py` | 公開 Python API |
 
@@ -279,9 +355,10 @@ JSON stdout
 - `PageState`
 - `UnprocessedFaultNoticeQuery`
 - `DailyInspectionWorkOrderQuery`
+- `DailyInspectionWorkOrderDetailReader`
 - `MMISClientError`
 
-功能模組採 `query_<domain_objects>.py` 命名；登入與 transport 保持在共用模組，個別 Query 類別只負責一項 MMIS 操作的事件順序與領域規則。
+查詢清單的功能模組採 `query_<domain_objects>.py` 命名，單筆內容讀取採 `read_<domain_object>.py`；登入與 transport 保持在共用模組，個別 Query／Reader 類別只負責一項 MMIS 操作的事件順序與領域規則。
 
 ## 測試與驗證
 
@@ -306,6 +383,7 @@ git diff --check
 - Maximo event payload 與 shared-session 錯誤。
 - 故障通報的空結果、多頁合併與分頁一致性。
 - 日檢工單輸入正規化、event 順序、有資料、空結果與多頁保護。
+- 工作單號驗證、唯一命中保護、明細點擊、故障通報空表、缺表、多行文字及未完整分頁保護。
 - CLI 子命令與參數 dispatch。
 - 本機錄製 DOM 存在時的離線解析回歸。
 
@@ -346,6 +424,18 @@ git diff --check
 
 這是有效的零筆結果，不是程式錯誤。請確認車組／車號、日期以及固定檢修段「新竹機務段」是否符合預期。
 
+### `找不到工作單：...`
+
+這是 `query-daily-inspection-work-order-by-number` 的錯誤結果。請確認工作單號正確；此命令只有在唯一命中且完全相符時才會進入工單，避免誤讀其他資料列。
+
+### `工作單查詢結果不是唯一一筆`
+
+查詢回應不是恰好一筆，或 MMIS 顯示的總筆數與目前資料列不一致。程式會安全停止，不會自行選擇第一筆。
+
+### `故障通報管理結果超過單頁，拒絕回傳不完整資料`
+
+目前工單明細 reader 不會靜默忽略後續頁面。若實際工單有超過一頁的故障通報，需要另行擴充明細分頁支援。
+
 ### `日檢工單結果超過單頁，拒絕回傳不完整資料`
 
 目前日檢工單功能不會靜默忽略後續頁面。請縮小查詢條件，或另行擴充日檢工單分頁支援。
@@ -359,5 +449,6 @@ MMIS 的表格欄名、app ID、event target 或 DOM 結構可能已變更，需
 - 每次 CLI 執行都會重新登入，沒有跨程序 session cache。
 - 日檢工單固定使用「新竹機務段」，目前沒有 depot CLI 參數。
 - 日檢工單不擷取多頁；偵測到結果超過單頁時會明確失敗。
+- 以工作單號讀取明細時，故障通報超過單頁會明確失敗，不會輸出不完整資料。
 - Maximo app ID、欄位語義或 event protocol 改版時，需要同步更新程式。
 - 不下載 Excel，也不包含排程、圖形介面或瀏覽器 fallback。

@@ -52,7 +52,12 @@ def _parse_maximo_markup(response_text: str) -> tuple[str, BeautifulSoup]:
     return decoded, soup
 
 
-def _cell_value(cell: Tag, *, is_checkbox: bool) -> str | bool:
+def _cell_value(
+    cell: Tag,
+    *,
+    is_checkbox: bool,
+    normalize_line_breaks: bool = False,
+) -> str | bool:
     if is_checkbox:
         checkbox = cell.find(attrs={"checked": True})
         if checkbox is None:
@@ -62,19 +67,43 @@ def _cell_value(cell: Tag, *, is_checkbox: bool) -> str | bool:
     if value_node is None:
         value_node = cell.find("span", title=True)
     if value_node is None:
-        return cell.get_text(" ", strip=True)
+        separator = "\n" if normalize_line_breaks else " "
+        return cell.get_text(separator, strip=True)
     title = value_node.get("title")
-    return str(title).strip() if title else value_node.get_text(" ", strip=True)
+    if title:
+        value = str(title).strip()
+        if normalize_line_breaks:
+            value = re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE)
+        return value
+    separator = "\n" if normalize_line_breaks else " "
+    return value_node.get_text(separator, strip=True)
+
+
+def _table_scope(
+    soup: BeautifulSoup,
+    *,
+    table_summary: str | None,
+) -> BeautifulSoup | Tag:
+    if table_summary is None:
+        return soup
+    tables = soup.find_all("table", attrs={"summary": table_summary})
+    if not tables:
+        raise MMISClientError(f"查詢回應找不到「{table_summary}」表格")
+    if len(tables) > 1:
+        raise MMISClientError(f"查詢回應包含多個「{table_summary}」表格")
+    return tables[0]
 
 
 def parse_maximo_table_schema(
     response_text: str,
     *,
     required_headers: set[str],
+    table_summary: str | None = None,
 ) -> MaximoTableSchema:
     decoded, soup = _parse_maximo_markup(response_text)
+    scope = _table_scope(soup, table_summary=table_summary)
     tables: dict[str, dict[int, str]] = {}
-    for node in soup.find_all(id=HEADER_ID_RE):
+    for node in scope.find_all(id=HEADER_ID_RE):
         match = HEADER_ID_RE.match(str(node.get("id")))
         if match is None:
             continue
@@ -103,16 +132,21 @@ def parse_maximo_table(
     *,
     required_headers: set[str],
     checkbox_headers: set[str] | None = None,
+    table_summary: str | None = None,
+    normalize_line_breaks: bool = False,
 ) -> tuple[MaximoTableSchema | None, list[dict[str, Any]]]:
     decoded, soup = _parse_maximo_markup(response_text)
-    if "沒有要顯示的列" in decoded:
+    if table_summary is None and "沒有要顯示的列" in decoded:
         return None, []
     schema = parse_maximo_table_schema(
-        response_text, required_headers=required_headers
+        response_text,
+        required_headers=required_headers,
+        table_summary=table_summary,
     )
+    scope = _table_scope(soup, table_summary=table_summary)
     row_re = re.compile(ROW_ID_RE_TEMPLATE.format(prefix=re.escape(schema.prefix)))
     row_nodes: list[tuple[int, Tag]] = []
-    for node in soup.find_all(id=row_re):
+    for node in scope.find_all(id=row_re):
         match = row_re.match(str(node.get("id")))
         if match:
             row_nodes.append((int(match.group("row")), node))
@@ -128,7 +162,9 @@ def parse_maximo_table(
                 record[field_name] = False if field_name in checkbox_headers else ""
             else:
                 record[field_name] = _cell_value(
-                    cell, is_checkbox=field_name in checkbox_headers
+                    cell,
+                    is_checkbox=field_name in checkbox_headers,
+                    normalize_line_breaks=normalize_line_breaks,
                 )
         rows.append(record)
     return schema, rows

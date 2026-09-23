@@ -37,6 +37,20 @@
           "definition": "由 CLI 輸入車組／車號與檢修日期，取得工單清單或明確的零筆結果。"
         }
       ]
+    },
+    {
+      "name": "MMIS HTTP 日檢工單明細查詢",
+      "definition": "以 HTTP-only 流程依工作單號進入動力車日檢(1A)工單，擷取故障通報管理並輸出可判空 JSON。",
+      "stories": [
+        {
+          "name": "以工作單號取得故障通報",
+          "definition": "由 CLI 輸入工作單號，取得該日檢工單的故障通報清單或明確的空資料結果。"
+        },
+        {
+          "name": "判斷故障通報是否為空",
+          "definition": "JSON 以 has_fault_notices、count 與 records 提供穩定的空資料判斷契約。"
+        }
+      ]
     }
   ]
 }

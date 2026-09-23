@@ -1,4 +1,8 @@
-from mmis_connector import DailyInspectionWorkOrderQuery, UnprocessedFaultNoticeQuery
+from mmis_connector import (
+    DailyInspectionWorkOrderDetailReader,
+    DailyInspectionWorkOrderQuery,
+    UnprocessedFaultNoticeQuery,
+)
 from mmis_connector.query_unprocessed_fault_notices import QUERY_NAME
 
 
@@ -9,3 +13,10 @@ def test_unprocessed_fault_notice_query_is_public() -> None:
 
 def test_daily_inspection_work_order_query_is_public() -> None:
     assert DailyInspectionWorkOrderQuery.__name__ == "DailyInspectionWorkOrderQuery"
+
+
+def test_daily_inspection_work_order_detail_reader_is_public() -> None:
+    assert (
+        DailyInspectionWorkOrderDetailReader.__name__
+        == "DailyInspectionWorkOrderDetailReader"
+    )

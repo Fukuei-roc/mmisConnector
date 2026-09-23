@@ -33,4 +33,5 @@
 |---|---|---|
 | `python -m mmis_connector query-unprocessed-fault-notices` | 查詢本段未處理通報並輸出 JSON | 需先設定 `.env` |
 | `python -m mmis_connector query-daily-inspection-work-orders 703 2026/09/22` | 依車組／車號與檢修日期查詢日檢工單 | 需先設定 `.env` |
+| `python -m mmis_connector query-daily-inspection-work-order-by-number 115-1A-70048` | 依工作單號查詢日檢工單的故障通報內容 | 需先設定 `.env`；只輸出 stdout JSON |
 | `python -m pytest` | 執行測試 | 不連線 MMIS 的測試為預設 |

@@ -8,10 +8,14 @@ from typing import Any
 from .auth import MMISClientError, MMISConfig, MMISSession
 from .query_daily_inspection_work_orders import DailyInspectionWorkOrderQuery
 from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
+from .read_daily_inspection_work_order import DailyInspectionWorkOrderDetailReader
 
 
 QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND = "query-unprocessed-fault-notices"
 QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND = "query-daily-inspection-work-orders"
+QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND = (
+    "query-daily-inspection-work-order-by-number"
+)
 CommandHandler = Callable[[Sequence[str]], dict[str, Any]]
 
 
@@ -43,11 +47,27 @@ def _query_daily_inspection_work_orders(args: Sequence[str]) -> dict[str, Any]:
     return DailyInspectionWorkOrderQuery(client).run(args[0], args[1])
 
 
+def _query_daily_inspection_work_order_by_number(
+    args: Sequence[str],
+) -> dict[str, Any]:
+    if len(args) != 1:
+        raise MMISClientError(
+            f"用法: {QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND} "
+            "<工作單號>"
+        )
+    config = MMISConfig.from_env()
+    client = MMISSession(config)
+    return DailyInspectionWorkOrderDetailReader(client).run(args[0])
+
+
 def _commands() -> dict[str, CommandHandler]:
     return {
         QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND: _query_unprocessed_fault_notices,
         QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND: (
             _query_daily_inspection_work_orders
+        ),
+        QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND: (
+            _query_daily_inspection_work_order_by_number
         ),
     }
 

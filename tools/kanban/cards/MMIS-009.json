@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-009",
+  "title": "實作 HTTP-only 日檢工單明細查詢 CLI",
+  "content": "由 CLI 接受工作單號，唯一命中後進入 1A 工單，解析故障通報管理並輸出可判空 JSON。",
+  "stage": "verify",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-23",
+  "epic": "MMIS HTTP 日檢工單明細查詢",
+  "userStory": "以工作單號取得故障通報",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 9,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢工單明細查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢工單明細查詢/task-cards/MMIS-009.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢工單明細查詢/verification/MMIS-009.md", "pr": ""},
+  "refs": ["src/mmis_connector/read_daily_inspection_work_order.py", "src/mmis_connector/parser.py", "src/mmis_connector/cli.py", "src/mmis_connector/__init__.py", "tests"],
+  "evidence": {"commands": ["python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "live detail query", "live existing daily inspection query", "browser and sensitive-term scans"], "findings": ["53 passed, 2 skipped", "新 live CLI 擷取 6 筆且多行換行正確", "既有日檢 live 查詢回歸成功", "無瀏覽器依賴或新增敏感常值", "HAR 已確認工作單列 click response 直接包含故障通報管理與資料列"], "residual": "尚無真實空表與多頁明細錄製；未完整分頁會 fail closed。"},
+  "comments": [{"name": "專案使用者", "time": "2026-09-23", "text": "人工核准功能規格並指示開始實作；高風險任務卡待再次核准。"}, {"name": "專案使用者", "time": "2026-09-23", "text": "MMIS-009 核准，請開始實作。"}]
+}

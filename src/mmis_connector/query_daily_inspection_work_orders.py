@@ -6,6 +6,7 @@ from typing import Any
 from .auth import MMISClientError, MMISSession, PageState
 from .events import MaximoEventClient
 from .parser import (
+    MaximoTableSchema,
     parse_maximo_page_info,
     parse_maximo_table,
     parse_maximo_table_schema,
@@ -69,9 +70,8 @@ class DailyInspectionWorkOrderQuery:
             display_name="動力車日檢(1A)",
         )
 
-    def run(self, vehicle: str, inspection_date: str) -> dict[str, Any]:
-        normalized_vehicle = normalize_vehicle(vehicle)
-        normalized_date = normalize_inspection_date(inspection_date)
+    def open_all_records(self) -> tuple[PageState, MaximoTableSchema]:
+        """Open the reusable all-records list and resolve its dynamic table."""
         state = self._load_app()
 
         menu_response = self._post_event(
@@ -96,6 +96,12 @@ class DailyInspectionWorkOrderQuery:
         schema = parse_maximo_table_schema(
             all_records_response, required_headers=REQUIRED_HEADERS
         )
+        return self.client.state or state, schema
+
+    def run(self, vehicle: str, inspection_date: str) -> dict[str, Any]:
+        normalized_vehicle = normalize_vehicle(vehicle)
+        normalized_date = normalize_inspection_date(inspection_date)
+        state, schema = self.open_all_records()
         prefix = schema.prefix
         values = (
             (1, DEPOT, 3),
