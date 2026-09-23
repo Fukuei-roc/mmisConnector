@@ -17,6 +17,10 @@ RECORDED_DOM = Path(
 )
 
 
+@pytest.mark.skipif(
+    not RECORDED_DOM.exists(),
+    reason="本機未提供既有多頁故障通報錄製 DOM",
+)
 def test_parse_recorded_dom_extracts_all_rows_and_fields() -> None:
     rows = parse_fault_notice_table(RECORDED_DOM.read_text(encoding="utf-8"))
     assert len(rows) == 2

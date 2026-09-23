@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-008",
+  "title": "實作 HTTP-only 日檢工單查詢 CLI",
+  "content": "由 CLI 接受車組／車號與檢修日期，重用 MMIS session 與共用 event 層查詢 1A 工單，並處理零筆結果。",
+  "stage": "verify",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-23",
+  "epic": "MMIS HTTP 日檢工單查詢",
+  "userStory": "依車號與日期查詢日檢工單",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 8,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢工單查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢工單查詢/task-cards/MMIS-008.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢工單查詢/verification/MMIS-008.md", "pr": ""},
+  "refs": ["src/mmis_connector/events.py", "src/mmis_connector/query_daily_inspection_work_orders.py", "src/mmis_connector/parser.py", "src/mmis_connector/cli.py", "tests/test_query_daily_inspection_work_orders.py", "tests/test_events.py"],
+  "evidence": {"commands": ["python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "live daily inspection hit query", "live daily inspection empty query", "live unprocessed fault notice regression query"], "findings": ["33 passed, 1 skipped", "日檢 live 命中 1 筆", "日檢 live 空結果顯示找不到對應工單", "既有未處理通報 live 回歸成功", "Browser dependency scan clean"], "residual": "錄製目錄缺少 raw.har；日檢多頁結果 fail closed；一項舊測試因外部錄製 DOM 缺檔而跳過。"},
+  "comments": ["2026-09-23：使用者核准規格並指示開始製作程式。"]
+}

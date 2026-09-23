@@ -4,7 +4,7 @@
 
 ## 系統總覽
 
-`auth.MMISSession` 負責登入與 page state；`query_unprocessed_fault_notices.UnprocessedFaultNoticeQuery` 重用同一 Session 送出 Maximo event；`parser` 將回應 HTML 轉成 JSON-safe records；`cli` 只負責設定載入、錯誤封裝與 stdout JSON。
+`auth.MMISSession` 負責登入與 page state；`events.MaximoEventClient` 重用同一 Session 送出 Maximo event 與切換 app；各 `query_*` 功能模組編排查詢；`parser` 將回應 HTML 轉成 JSON-safe records；`cli` 只負責參數、設定載入、錯誤封裝與 stdout JSON。
 
 ## 邊界
 
@@ -19,6 +19,8 @@
 - 使用單一 `requests.Session` 保持 cookie。
 - 每次登入解析新 hidden fields，每次頁面解析新 PAGESEQNUM、UISESSIONID、CSRFTOKEN、APPID。
 - Maximo event 使用當前 page state、Referer、pageseqnum 與 xhrseqnum。
+- app 切換與 event payload 組裝統一重用 `MaximoEventClient`，功能模組只負責事件順序與領域參數。
+- Maximo list 的動態 table prefix 應由必要欄名集合解析，不寫死錄製中的 prefix。
 - stdout 僅輸出 JSON；診斷訊息送 stderr。
 - 功能模組採 `動作_領域物件.py`；查詢類別採 `<DomainObject>Query`，單筆讀取採 `<DomainObject>DetailReader`。
 

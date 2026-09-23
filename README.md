@@ -1,69 +1,31 @@
 # MMIS Connector
 
-MMIS Connector 是一個不依賴瀏覽器的 Python 命令列工具。它使用純 HTTP 流程登入 MMIS，從首頁進入「故障通報管理」，套用「本段未處理通報(車輛配屬段)」儲存查詢，最後將畫面資料以 JSON 輸出至命令列。
+MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用 `requests.Session` 登入 MMIS，重播 Maximo HTTP event，解析 XML／CDATA 中的表格資料，並將結果輸出為 UTF-8 JSON。
 
-## 功能
+目前提供兩項功能：
 
-- 使用 `requests.Session` 登入並在單次執行期間保持登入狀態。
-- 從登入頁解析 hidden fields，不寫死動態 token。
-- 重播 Maximo `maximo.jsp` event request，不使用 Playwright、Selenium 或其他瀏覽器。
-- 自動進入 `ZZ_FNM` 故障通報管理並套用指定儲存查詢。
-- 解析 Maximo XML／CDATA 回應中的完整結果表格。
-- 支援空欄位、checkbox 與零筆結果。
-- 成功或失敗皆輸出可解析的 UTF-8 JSON。
-- 不在 JSON 中輸出密碼、cookie、CSRF token 或 session ID。
+| 功能 | CLI 子命令 | 輸入 |
+|---|---|---|
+| 查詢本段未處理故障通報 | `query-unprocessed-fault-notices` | 無 |
+| 查詢動力車日檢(1A)工單 | `query-daily-inspection-work-orders` | 車組／車號、檢修日期 |
 
-## 執行流程
+## 功能特色
 
-```text
-.env
-  ↓
-MMISSession 登入並保持 requests.Session
-  ↓
-載入 MMIS 首頁／啟動中心
-  ↓
-changeapp(ZZ_FNM)
-  ↓
-開啟儲存查詢選單
-  ↓
-套用「本段未處理通報(車輛配屬段)」
-  ↓
-解析表格並輸出 JSON
-```
-
-程式分成兩個主要部分：
-
-- `src/mmis_connector/auth.py`：讀取設定、登入 MMIS、保存 cookies 與最新 page state。
-- `src/mmis_connector/query_unprocessed_fault_notices.py`：從首頁切換應用程式、套用「本段未處理通報(車輛配屬段)」查詢並取得結果。
-
-其他模組：
-
-- `src/mmis_connector/parser.py`：解析 Maximo XML／CDATA 與故障通報表格。
-- `src/mmis_connector/cli.py`：組合完整流程、處理 exit code 並輸出 JSON。
-
-## 功能模組命名規則
-
-MMIS 功能模組使用 `動作_領域物件.py`，避免使用無法辨識實際用途的 `workflow.py`、`handler.py` 或 `utils.py`：
-
-| 功能類型 | 模組格式 | 類別格式 | 範例 |
-|---|---|---|---|
-| 查詢清單 | `query_<domain_objects>.py` | `<DomainObject>Query` | `query_unprocessed_fault_notices.py`／`UnprocessedFaultNoticeQuery` |
-| 讀取單筆內容 | `read_<domain_object>_detail.py` | `<DomainObject>DetailReader` | `read_fault_notice_detail.py`／`FaultNoticeDetailReader` |
-| 執行動作 | `<verb>_<domain_object>.py` | `<DomainObject><Action>` | `close_fault_notice.py`／`FaultNoticeCloser` |
-
-未來功能建議命名：
-
-- 讀取特定故障通報內容：`read_fault_notice_detail.py`／`FaultNoticeDetailReader`
-- 查詢「動力車日檢(1A)」清單：`query_one_a_work_orders.py`／`OneAWorkOrderQuery`
-
-共用的登入、HTTP transport 與 page state 留在 `auth.py`；跨功能共用的解析能力留在具體命名的 parser 模組。每個功能模組只負責一個可獨立描述與測試的 MMIS 操作。
+- 使用既有 MMIS 表單登入流程，不需要 Playwright、Selenium 或 Chrome。
+- 以單一 `requests.Session` 保存程序執行期間的 cookie 與 page state。
+- 從 MMIS 回應解析 `PAGESEQNUM`、`UISESSIONID`、CSRF token 與 app ID，不在原始碼寫死動態值。
+- 共用 Maximo `maximo.jsp` event transport 與 app 切換流程。
+- 解析 Maximo XML／CDATA、動態表格 ID、文字欄位與 checkbox。
+- 支援故障通報多頁結果擷取與筆數一致性檢查。
+- 日檢工單支援合法日期驗證、空結果及不完整結果保護。
+- 成功與失敗皆輸出可解析 JSON；不輸出密碼、cookie、CSRF token 或 session ID。
 
 ## 系統需求
 
 - Windows
 - Python 3.11 或更新版本
 - 可連線至 MMIS 內部網站
-- 具有「故障通報管理」及目標儲存查詢權限的 MMIS 帳號
+- 具有對應 MMIS 應用程式與資料的存取權限
 
 ## 安裝
 
@@ -74,7 +36,7 @@ cd C:\Docker\mmisConnector
 python -m pip install -e ".[test]"
 ```
 
-此指令會安裝 `requests`、`beautifulsoup4`、`python-dotenv` 與 `pytest`。
+主要依賴：`requests`、`beautifulsoup4`、`python-dotenv`，以及測試用的 `pytest`。
 
 ## 環境設定
 
@@ -102,50 +64,96 @@ MMIS_TIMEOUT_SECONDS=20
 | `MMIS_VERIFY_SSL` | 否 | `true` | 是否驗證伺服器 TLS 憑證 |
 | `MMIS_TIMEOUT_SECONDS` | 否 | `20` | 單次 HTTP request 逾時秒數，必須大於 0 |
 
-`.env` 已列入 `.gitignore`，不得提交到 Git。`.env.example` 只能保留空白或示範值。
+`.env` 已列入 `.gitignore`，不得提交到 Git；`.env.example` 只能保留空白或示範值。
 
-### SSL 憑證注意事項
+### SSL 憑證
 
-安全預設為 `MMIS_VERIFY_SSL=true`。如果目前 Python trust store 沒有機關內部 CA，執行時可能出現 `SSLError`。只有在確認連線目標及網路環境可信時，才暫時改為：
+安全預設為 `MMIS_VERIFY_SSL=true`。如果 Python trust store 沒有機關內部 CA，執行時可能出現 `SSLError`。只有在確認連線目標與網路環境可信時，才可暫時設定：
 
 ```dotenv
 MMIS_VERIFY_SSL=false
 ```
 
-長期建議是將機關 CA 加入受信任憑證鏈，再恢復 SSL 驗證。
+長期做法應是安裝正確的機關 CA，並恢復 TLS 憑證驗證。
 
-## 執行
+## 使用方式
 
-使用 Python module 與功能子命令：
+可以使用 Python module：
 
 ```powershell
-python -m mmis_connector query-unprocessed-fault-notices
+python -m mmis_connector <子命令> [參數]
 ```
 
 安裝完成後也可以使用 console command：
 
 ```powershell
-mmis-connector query-unprocessed-fault-notices
+mmis-connector <子命令> [參數]
 ```
 
-程式只在 stdout 輸出 JSON，方便 PowerShell 或其他程式接續處理：
+### 查詢本段未處理故障通報
 
 ```powershell
-$result = python -m mmis_connector query-unprocessed-fault-notices | ConvertFrom-Json
+python -m mmis_connector query-unprocessed-fault-notices
+```
+
+此功能會：
+
+1. 登入 MMIS 並載入啟動中心。
+2. 進入 `ZZ_FNM`「故障通報管理」。
+3. 開啟儲存查詢選單。
+4. 套用「本段未處理通報(車輛配屬段)」。
+5. 依表格分頁控制逐頁取得所有結果。
+6. 驗證每頁範圍、總筆數與合併筆數後輸出 JSON。
+
+PowerShell 使用範例：
+
+```powershell
+$result = python -m mmis_connector query-unprocessed-fault-notices |
+  ConvertFrom-Json
+
 $result.count
 $result.records
 ```
 
-子命令同樣採「動作 + 領域物件」命名。未來可擴充為：
+### 查詢日檢工單
 
 ```powershell
-mmis-connector read-fault-notice-detail --notice-number <通報號>
-mmis-connector query-one-a-work-orders
+python -m mmis_connector query-daily-inspection-work-orders 703 2026/09/22
 ```
 
-上述兩個未來指令目前尚未實作。
+參數順序：
+
+1. `車組/車號`：trim 後不得為空白，例如 `703`。
+2. `檢修日期`：有效的 `YYYY/MM/DD` 或 `YYYY/M/D` 日期。
+
+此功能會：
+
+1. 登入 MMIS 並進入 `ZZ_PMWO1A`「動力車日檢(1A)」。
+2. 切換為「所有記錄」。
+3. 使用固定條件 `檢修段=新竹機務段`。
+4. 將車組／車號填入對應的 Maximo 查詢欄位。
+5. 將日期正規化後，以 `>YYYY/MM/DD` 作為檢修日期條件。
+6. 輸出工單清單；沒有資料時輸出「找不到對應工單」。
+
+例如輸入 `2026/9/2` 時，JSON 的 `inspection_date` 會是 `2026/09/02`，送往 MMIS 的查詢條件則是 `>2026/09/02`。
+
+PowerShell 使用範例：
+
+```powershell
+$result = python -m mmis_connector `
+  query-daily-inspection-work-orders 703 2026/09/22 |
+  ConvertFrom-Json
+
+if ($result.count -eq 0) {
+  $result.message
+} else {
+  $result.records | Select-Object '工作單', '車組/車號', '檢修日期'
+}
+```
 
 ## JSON 輸出
+
+### 未處理故障通報成功結果
 
 成功時 exit code 為 `0`：
 
@@ -178,11 +186,55 @@ mmis-connector query-one-a-work-orders
 }
 ```
 
-目前每筆資料包含 17 個欄位：車次、車組/車號、發生日期、發生時間、事故等級、故障地點、ATP故障、故障現象、立案人員、通報人員、通報單位、通報股室、狀態、通報號、配屬段別、配屬段別名稱、顏色查詢。
+查無資料時，`count` 為 `0`，且 `records` 為空陣列。
 
-查無資料時，`count` 為 `0` 且 `records` 為空陣列。
+### 日檢工單成功結果
 
-失敗時 exit code 為 `1`：
+```json
+{
+  "success": true,
+  "query_name": "查詢日檢工單",
+  "vehicle": "703",
+  "inspection_date": "2026/09/22",
+  "count": 1,
+  "records": [
+    {
+      "檢修段": "新竹機務段",
+      "配屬段": "新竹機務段",
+      "車組/車號": "EMU703",
+      "檢修級別": "1A",
+      "工作單": "115-1A-範例",
+      "車次": "範例",
+      "檢修單位": "範例",
+      "工作單狀態": "範例",
+      "處理人員": "範例",
+      "預計檢修(進廠)日": "2026/09/24",
+      "檢修日期": "2026/09/23",
+      "完工日期": "2026/09/23",
+      "階段核簽人": "",
+      "逾期標註?": false
+    }
+  ]
+}
+```
+
+日檢工單查無資料時仍是成功的業務結果，exit code 為 `0`：
+
+```json
+{
+  "success": true,
+  "query_name": "查詢日檢工單",
+  "vehicle": "999999",
+  "inspection_date": "2099/12/31",
+  "count": 0,
+  "records": [],
+  "message": "找不到對應工單"
+}
+```
+
+### 失敗結果
+
+參數、登入、網路、MMIS event 或解析失敗時，exit code 為 `1`：
 
 ```json
 {
@@ -192,7 +244,46 @@ mmis-connector query-one-a-work-orders
 }
 ```
 
-## 測試
+未預期例外不會將原始例外細節輸出到 stdout，以降低敏感資料外洩風險。
+
+## 程式架構
+
+```text
+CLI 參數
+  ↓
+MMISConfig / MMISSession
+  ↓
+MaximoEventClient
+  ↓
+功能 Query 模組
+  ↓
+Maximo table parser
+  ↓
+JSON stdout
+```
+
+| 模組 | 職責 |
+|---|---|
+| `src/mmis_connector/auth.py` | 讀取 `.env`、登入、同源 HTTPS 檢查、保存 session 與 page state |
+| `src/mmis_connector/events.py` | 共用 Maximo event POST、CSRF／sequence header、app 切換與 shared-session 錯誤偵測 |
+| `src/mmis_connector/query_unprocessed_fault_notices.py` | 套用未處理通報儲存查詢並擷取所有分頁 |
+| `src/mmis_connector/query_daily_inspection_work_orders.py` | 驗證車號／日期，查詢動力車日檢(1A)工單 |
+| `src/mmis_connector/parser.py` | 展開 XML／CDATA、解析動態 table prefix、表頭、資料列、checkbox 與分頁資訊 |
+| `src/mmis_connector/cli.py` | 子命令 dispatch、參數數量檢查、exit code 與 JSON 輸出 |
+| `src/mmis_connector/__init__.py` | 公開 Python API |
+
+公開的主要 Python 類別：
+
+- `MMISConfig`
+- `MMISSession`
+- `PageState`
+- `UnprocessedFaultNoticeQuery`
+- `DailyInspectionWorkOrderQuery`
+- `MMISClientError`
+
+功能模組採 `query_<domain_objects>.py` 命名；登入與 transport 保持在共用模組，個別 Query 類別只負責一項 MMIS 操作的事件順序與領域規則。
+
+## 測試與驗證
 
 執行全部測試：
 
@@ -200,30 +291,34 @@ mmis-connector query-one-a-work-orders
 python -m pytest
 ```
 
-執行語法與依賴完整性檢查：
+執行語法、依賴與 diff 檢查：
 
 ```powershell
 python -m compileall -q src tests
 python -m pip check
+git diff --check
 ```
 
-測試涵蓋 page state 解析、缺少必要狀態時的錯誤處理、跨來源 URL 阻擋、空結果，以及錄製 DOM 的 16 筆／17 欄回歸驗證。
+測試涵蓋：
 
-錄製 DOM 測試目前讀取：
+- 設定與 page state 解析。
+- HTTPS 同源網路邊界。
+- Maximo event payload 與 shared-session 錯誤。
+- 故障通報的空結果、多頁合併與分頁一致性。
+- 日檢工單輸入正規化、event 順序、有資料、空結果與多頁保護。
+- CLI 子命令與參數 dispatch。
+- 本機錄製 DOM 存在時的離線解析回歸。
 
-```text
-C:\Docker\maximoFlowRecorder\recordings\2026-09-21_login\dom\2026-09-21T054259-270.html
-```
-
-預設 pytest 不會登入或修改 MMIS。實際 HTTP 流程需另外執行 `python -m mmis_connector query-unprocessed-fault-notices` 驗證。
+預設 pytest 不會登入 MMIS。Live 驗證需另外執行對應 CLI，並使用有效 `.env` 與內網連線。
 
 ## 安全性
 
-- 不要提交 `.env`、HAR、session evidence、cookie 或 token。
-- 不要將完整成功 JSON 貼到公開 issue；故障通報可能包含內部或個人資料。
-- HTTP client 會拒絕與 `MMIS_BASE_URL` 不同來源的 form action 及 redirect。
-- POST request 不會由 transport layer 自動重送，避免重播登入或 Maximo event。
-- 登入狀態只存在目前程序記憶體；程式結束後不保存 session cookie。
+- 不要提交 `.env`、HAR、session evidence、cookie、token 或包含內部資料的輸出檔。
+- 不要將完整成功 JSON 貼到公開 issue；結果可能包含內部資料或個人資料。
+- `MMISSession` 只允許與 `MMIS_BASE_URL` 相同 scheme 與 host 的請求。
+- transport 只會自動重試 GET，不自動重送登入或 Maximo event POST。
+- 登入狀態只存在目前程序記憶體，程式結束後不保存 session cookie。
+- CLI 錯誤輸出不包含帳密、token、cookie、session ID 或完整 response body。
 
 ## 常見問題
 
@@ -241,15 +336,28 @@ C:\Docker\maximoFlowRecorder\recordings\2026-09-21_login\dom\2026-09-21T054259-2
 
 ### `MMIS session 拒絕 event`
 
-重新執行命令，讓程式建立新的 Session。若持續發生，可能是 Maximo 的 page sequence 或 event protocol 已改版。
+重新執行命令以建立新 Session。若持續發生，可能是 Maximo 的 page sequence 或 event protocol 已改版。
 
-### `查詢回應找不到故障通報表頭`
+### `檢修日期必須是有效的 YYYY/MM/DD 日期`
 
-可能是 MMIS 表格 DOM、應用程式 ID 或儲存查詢名稱已變更，需要重新錄製流程並更新 parser／event constants。
+使用真實日曆日期，例如 `2026/09/22`；`2026-09-22` 或 `2026/02/30` 都會被拒絕。
+
+### `找不到對應工單`
+
+這是有效的零筆結果，不是程式錯誤。請確認車組／車號、日期以及固定檢修段「新竹機務段」是否符合預期。
+
+### `日檢工單結果超過單頁，拒絕回傳不完整資料`
+
+目前日檢工單功能不會靜默忽略後續頁面。請縮小查詢條件，或另行擴充日檢工單分頁支援。
+
+### `查詢回應找不到...`
+
+MMIS 的表格欄名、app ID、event target 或 DOM 結構可能已變更，需要重新錄製流程並更新 parser 或功能模組。
 
 ## 已知限制
 
-- 目前只支援「本段未處理通報(車輛配屬段)」。
-- 沒有跨程序 session cache；每次執行都會重新登入。
-- Maximo app ID、event target ID 與表格欄位規律若改版，需要同步更新程式。
+- 每次 CLI 執行都會重新登入，沒有跨程序 session cache。
+- 日檢工單固定使用「新竹機務段」，目前沒有 depot CLI 參數。
+- 日檢工單不擷取多頁；偵測到結果超過單頁時會明確失敗。
+- Maximo app ID、欄位語義或 event protocol 改版時，需要同步更新程式。
 - 不下載 Excel，也不包含排程、圖形介面或瀏覽器 fallback。

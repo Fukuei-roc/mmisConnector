@@ -6,11 +6,13 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from .auth import MMISClientError, MMISConfig, MMISSession
+from .query_daily_inspection_work_orders import DailyInspectionWorkOrderQuery
 from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
 
 
 QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND = "query-unprocessed-fault-notices"
-CommandHandler = Callable[[], dict[str, Any]]
+QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND = "query-daily-inspection-work-orders"
+CommandHandler = Callable[[Sequence[str]], dict[str, Any]]
 
 
 def _configure_stdio() -> None:
@@ -19,16 +21,34 @@ def _configure_stdio() -> None:
             stream.reconfigure(encoding="utf-8")
 
 
-def _query_unprocessed_fault_notices() -> dict[str, Any]:
+def _query_unprocessed_fault_notices(args: Sequence[str]) -> dict[str, Any]:
+    if args:
+        raise MMISClientError(
+            f"用法: {QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND}"
+        )
     config = MMISConfig.from_env()
     client = MMISSession(config)
     client.login()
     return UnprocessedFaultNoticeQuery(client).run()
 
 
+def _query_daily_inspection_work_orders(args: Sequence[str]) -> dict[str, Any]:
+    if len(args) != 2:
+        raise MMISClientError(
+            f"用法: {QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND} "
+            "<車組/車號> <檢修日期 YYYY/MM/DD>"
+        )
+    config = MMISConfig.from_env()
+    client = MMISSession(config)
+    return DailyInspectionWorkOrderQuery(client).run(args[0], args[1])
+
+
 def _commands() -> dict[str, CommandHandler]:
     return {
         QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND: _query_unprocessed_fault_notices,
+        QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND: (
+            _query_daily_inspection_work_orders
+        ),
     }
 
 
@@ -37,12 +57,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     commands = _commands()
     try:
-        if len(args) != 1 or args[0] not in commands:
+        if not args or args[0] not in commands:
             available = ", ".join(sorted(commands))
             raise MMISClientError(
                 "請指定一個有效功能子命令。可用命令: " + available
             )
-        result = commands[args[0]]()
+        result = commands[args[0]](args[1:])
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except Exception as exc:  # noqa: BLE001
