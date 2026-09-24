@@ -6,7 +6,9 @@ import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.parser import MaximoTableSchema, parse_maximo_table
-from mmis_connector.query_daily_inspection_work_orders import REQUIRED_HEADERS
+from mmis_connector.query_daily_inspection_work_orders_by_vehicle_and_date import (
+    REQUIRED_HEADERS,
+)
 from mmis_connector.read_daily_inspection_work_order import (
     FAULT_HEADERS,
     FAULT_TABLE_SUMMARY,
@@ -18,7 +20,13 @@ from mmis_connector.read_daily_inspection_work_order import (
 STATE = PageState("session", 3, "csrf", "zz_pmwo1a", "https://example.test/app")
 LIST_SCHEMA = MaximoTableSchema(
     "daily",
-    {1: "檢修段", 3: "車組/車號", 5: "工作單", 11: "檢修日期"},
+    {
+        1: "檢修段",
+        3: "車組/車號",
+        5: "工作單",
+        8: "工作單狀態",
+        11: "檢修日期",
+    },
 )
 RECORDED_DOM = Path(
     r"C:\Docker\maximoFlowRecorder\recordings"

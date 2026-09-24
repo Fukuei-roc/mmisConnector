@@ -7,7 +7,7 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 | 功能 | CLI 子命令 | 輸入 |
 |---|---|---|
 | 比較並查詢本段未處理故障通報 | `query-unprocessed-fault-notices` | 無 |
-| 查詢動力車日檢(1A)工單 | `query-daily-inspection-work-orders` | 車組／車號、檢修日期 |
+| 以車號與日期查詢日檢工單 | `query-daily-inspection-work-orders-by-vehicle-and-date` | 車組／車號、檢修日期條件 |
 | 以工作單號查詢日檢工單內容 | `query-daily-inspection-work-order-by-number` | 工作單號 |
 
 ## 功能特色
@@ -19,7 +19,7 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 - 解析 Maximo XML／CDATA、動態表格 ID、文字欄位與 checkbox。
 - 依序比較「未處理故障通報(車輛配屬段)」與「未處理故障通報(開單時所屬段)」，擷取筆數較多者；平手時優先車輛配屬段。
 - 支援選定故障通報的多頁結果擷取與筆數一致性檢查。
-- 日檢工單支援合法日期驗證、空結果及不完整結果保護。
+- 日檢工單支援日期比較運算子、固定工作單狀態、空結果及不完整結果保護。
 - 可依工作單號進入唯一日檢工單，擷取「故障通報管理」，並明確區分空表與解析失敗。
 - 成功與失敗皆輸出可解析 JSON；不輸出密碼、cookie、CSRF token 或 session ID。
 - 所有功能只將 JSON 輸出至 stdout，不建立結果檔案。
@@ -120,33 +120,35 @@ $result.count
 $result.records
 ```
 
-### 查詢日檢工單
+### 以車號與日期查詢日檢工單
 
 ```powershell
-python -m mmis_connector query-daily-inspection-work-orders 703 2026/09/22
+python -m mmis_connector `
+  query-daily-inspection-work-orders-by-vehicle-and-date 717 '>2026/09/23'
 ```
 
 參數順序：
 
 1. `車組/車號`：trim 後不得為空白，例如 `703`。
-2. `檢修日期`：有效的 `YYYY/MM/DD` 或 `YYYY/M/D` 日期。
+2. `檢修日期條件`：有效的 `YYYY/MM/DD` 或 `YYYY/M/D` 日期，可省略運算子，或在日期前使用 `=`、`>`、`<`、`>=`、`<=`。
 
 此功能會：
 
 1. 登入 MMIS 並進入 `ZZ_PMWO1A`「動力車日檢(1A)」。
 2. 切換為「所有記錄」。
 3. 使用固定條件 `檢修段=新竹機務段`。
-4. 將車組／車號填入對應的 Maximo 查詢欄位。
-5. 將日期正規化後，以 `>YYYY/MM/DD` 作為檢修日期條件。
-6. 輸出工單清單；沒有資料時輸出「找不到對應工單」。
+4. 使用固定條件 `工作單狀態=執行中已派工,核簽中`。
+5. 將日期補零為 `YYYY/MM/DD`，並保留使用者輸入的比較運算子；未輸入運算子時由 MMIS 視為等於。
+6. 將車組／車號填入對應的 Maximo 查詢欄位並執行過濾。
+7. 輸出工單清單；沒有資料時輸出「找不到對應工單」。
 
-例如輸入 `2026/9/2` 時，JSON 的 `inspection_date` 會是 `2026/09/02`，送往 MMIS 的查詢條件則是 `>2026/09/02`。
+例如輸入 `>=2026/9/2` 時，JSON 的 `inspection_date` 仍是 `2026/09/02`（輸出欄位格式不變），送往 MMIS 的查詢條件則是 `>=2026/09/02`。輸入 `2026/9/2` 時會送出 `2026/09/02`，由 MMIS 套用預設的等於條件。PowerShell 中的 `>`、`<` 會被解讀為重新導向，因此含運算子的日期條件請用引號包住。
 
 PowerShell 使用範例：
 
 ```powershell
 $result = python -m mmis_connector `
-  query-daily-inspection-work-orders 703 2026/09/22 |
+  query-daily-inspection-work-orders-by-vehicle-and-date 717 '>2026/09/23' |
   ConvertFrom-Json
 
 if ($result.count -eq 0) {
@@ -346,7 +348,7 @@ JSON stdout
 | `src/mmis_connector/auth.py` | 讀取 `.env`、登入、同源 HTTPS 檢查、保存 session 與 page state |
 | `src/mmis_connector/events.py` | 共用 Maximo event POST、CSRF／sequence header、app 切換與 shared-session 錯誤偵測 |
 | `src/mmis_connector/query_unprocessed_fault_notices.py` | 比較兩個未處理通報儲存查詢，並擷取選定結果的所有分頁 |
-| `src/mmis_connector/query_daily_inspection_work_orders.py` | 驗證車號／日期，查詢動力車日檢(1A)工單 |
+| `src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py` | 驗證車號／日期條件，套用固定狀態並查詢動力車日檢(1A)工單 |
 | `src/mmis_connector/read_daily_inspection_work_order.py` | 驗證工作單號、進入唯一日檢工單並擷取故障通報管理 |
 | `src/mmis_connector/parser.py` | 展開 XML／CDATA、依 table summary 與動態 prefix 解析表頭、資料列、多行文字、checkbox 與分頁資訊 |
 | `src/mmis_connector/cli.py` | 子命令 dispatch、參數數量檢查、exit code 與 JSON 輸出 |
@@ -386,7 +388,7 @@ git diff --check
 - HTTPS 同源網路邊界。
 - Maximo event payload 與 shared-session 錯誤。
 - 故障通報的雙查詢順序、較大筆數選擇、平手優先、空結果、多頁合併與分頁一致性。
-- 日檢工單輸入正規化、event 順序、有資料、空結果與多頁保護。
+- 日檢工單日期運算子正規化、固定工作單狀態、event 順序、有資料、空結果與多頁保護。
 - 工作單號驗證、唯一命中保護、明細點擊、故障通報空表、缺表、多行文字及未完整分頁保護。
 - CLI 子命令與參數 dispatch。
 - 本機錄製 DOM 存在時的離線解析回歸。
@@ -422,11 +424,11 @@ git diff --check
 
 ### `檢修日期必須是有效的 YYYY/MM/DD 日期`
 
-使用真實日曆日期，例如 `2026/09/22`；`2026-09-22` 或 `2026/02/30` 都會被拒絕。
+使用真實日曆日期，例如 `2026/09/23` 或 `>2026/09/23`。只接受省略運算子或 `=`、`>`、`<`、`>=`、`<=`；`2026-09-23`、`=>2026/09/23` 或 `2026/02/30` 都會被拒絕。
 
 ### `找不到對應工單`
 
-這是有效的零筆結果，不是程式錯誤。請確認車組／車號、日期以及固定檢修段「新竹機務段」是否符合預期。
+這是有效的零筆結果，不是程式錯誤。請確認車組／車號、日期條件、固定檢修段「新竹機務段」，以及固定工作單狀態「執行中已派工,核簽中」是否符合預期。
 
 ### `找不到工作單：...`
 

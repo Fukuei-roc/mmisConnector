@@ -19,7 +19,7 @@
 |---|---|---|
 | `MMISSession` | 登入、同源 HTTPS、timeout 與程序內 session | `src/mmis_connector/auth.py` |
 | `MaximoEventClient` | 共用 Maximo event POST 與 app 切換 | `src/mmis_connector/events.py` |
-| `DailyInspectionWorkOrderQuery` | 依車號與日期查詢 1A 工單 | `src/mmis_connector/query_daily_inspection_work_orders.py` |
+| `DailyInspectionWorkOrderQuery` | 依車號與日期查詢 1A 工單 | `src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py` |
 | `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/read_daily_inspection_work_order.py` |
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/query_unprocessed_fault_notices.py` |
 

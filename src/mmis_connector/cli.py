@@ -6,13 +6,17 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from .auth import MMISClientError, MMISConfig, MMISSession
-from .query_daily_inspection_work_orders import DailyInspectionWorkOrderQuery
+from .query_daily_inspection_work_orders_by_vehicle_and_date import (
+    DailyInspectionWorkOrderQuery,
+)
 from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
 from .read_daily_inspection_work_order import DailyInspectionWorkOrderDetailReader
 
 
 QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND = "query-unprocessed-fault-notices"
-QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND = "query-daily-inspection-work-orders"
+QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND = (
+    "query-daily-inspection-work-orders-by-vehicle-and-date"
+)
 QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND = (
     "query-daily-inspection-work-order-by-number"
 )
@@ -36,11 +40,14 @@ def _query_unprocessed_fault_notices(args: Sequence[str]) -> dict[str, Any]:
     return UnprocessedFaultNoticeQuery(client).run()
 
 
-def _query_daily_inspection_work_orders(args: Sequence[str]) -> dict[str, Any]:
+def _query_daily_inspection_work_orders_by_vehicle_and_date(
+    args: Sequence[str],
+) -> dict[str, Any]:
     if len(args) != 2:
         raise MMISClientError(
-            f"用法: {QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND} "
-            "<車組/車號> <檢修日期 YYYY/MM/DD>"
+            "用法: "
+            f"{QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND} "
+            "<車組/車號> <檢修日期條件 [=|>|<|>=|<=]YYYY/MM/DD>"
         )
     config = MMISConfig.from_env()
     client = MMISSession(config)
@@ -63,8 +70,8 @@ def _query_daily_inspection_work_order_by_number(
 def _commands() -> dict[str, CommandHandler]:
     return {
         QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND: _query_unprocessed_fault_notices,
-        QUERY_DAILY_INSPECTION_WORK_ORDERS_COMMAND: (
-            _query_daily_inspection_work_orders
+        QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND: (
+            _query_daily_inspection_work_orders_by_vehicle_and_date
         ),
         QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND: (
             _query_daily_inspection_work_order_by_number

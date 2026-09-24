@@ -5,7 +5,7 @@ from typing import Any
 
 from .auth import MMISClientError, MMISSession, PageState
 from .parser import parse_maximo_page_info, parse_maximo_table
-from .query_daily_inspection_work_orders import (
+from .query_daily_inspection_work_orders_by_vehicle_and_date import (
     REQUIRED_HEADERS,
     DailyInspectionWorkOrderQuery,
 )

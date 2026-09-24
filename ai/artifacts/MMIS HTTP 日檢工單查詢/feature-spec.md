@@ -2,9 +2,9 @@
 
 ## Metadata
 
-- 功能：查詢日檢工單
+- 功能：以車號與日期查詢日檢工單（Query Daily Inspection Work Orders by Vehicle and Date）
 - 負責人：專案使用者
-- 狀態：人工已核准（2026-09-23，使用者指示「好的，請開始製作程式。」）
+- 狀態：人工已核准（2026-09-24，使用者明確要求本次重新命名與條件增量）
 - 風險等級：高（重用 MMIS 身分驗證並送出內網 HTTP event）
 
 ## 問題
@@ -17,7 +17,7 @@
 
 ## 目標
 
-- 提供 `query-daily-inspection-work-orders` CLI 子命令。
+- 提供 `query-daily-inspection-work-orders-by-vehicle-and-date` CLI 子命令。
 - 讓使用者在指令中輸入車組／車號與檢修日期。
 - 全程使用既有 `requests.Session` 與 Maximo HTTP event，不依賴瀏覽器。
 - 查詢有結果時輸出 JSON 工單清單；零筆時明確輸出「找不到對應工單」。
@@ -40,7 +40,7 @@
 
 ```text
 身為 MMIS 內部使用者
-我執行 python -m mmis_connector query-daily-inspection-work-orders 703 2026/09/22
+我執行 python -m mmis_connector query-daily-inspection-work-orders-by-vehicle-and-date 703 '>2026/09/23'
 系統登入 MMIS、進入動力車日檢(1A)、切換所有記錄並套用條件
 有資料時取得工單清單；無資料時看到「找不到對應工單」
 ```
@@ -49,8 +49,8 @@
 
 - WHEN 使用者提供車組／車號與合法日期，THE SYSTEM SHALL 使用既有 `MMISSession` 登入並重用同一 HTTP session。
 - WHEN 載入日檢工單應用程式，THE SYSTEM SHALL 以 HTTP event 切換至 `ZZ_PMWO1A`，不得啟動瀏覽器。
-- WHEN 執行查詢，THE SYSTEM SHALL 先選擇「所有記錄」，再設定 `C:1=新竹機務段`、`C:3=車組/車號`、`C:11=>YYYY/MM/DD`，最後送出 `filterrows` event。
-- WHEN 日期為 `YYYY/M/D` 或 `YYYY/MM/DD`，THE SYSTEM SHALL 驗證其為真實日曆日期並正規化為 `>YYYY/MM/DD`；不得產生重複的 `>>`。
+- WHEN 執行查詢，THE SYSTEM SHALL 先選擇「所有記錄」，再依錄製順序設定 `C:1=新竹機務段`、`C:8=執行中已派工,核簽中`、`C:11=檢修日期條件`、`C:3=車組/車號`，最後送出 `filterrows` event。
+- WHEN 日期條件省略運算子或使用 `=`、`>`、`<`、`>=`、`<=`，THE SYSTEM SHALL 驗證日期本體為真實日曆日期並正規化為 `YYYY/MM/DD`，且送往 MMIS 時保留使用者是否明確輸入運算子；其他運算子或重複運算子須拒絕。
 - WHEN 車組／車號為空白，THE SYSTEM SHALL 在發送網路請求前拒絕執行。
 - WHEN 回應含一筆或多筆資料，THE SYSTEM SHALL 解析可見欄名與資料列並輸出 JSON-safe records。
 - WHEN 回應顯示「沒有要顯示的列。」，THE SYSTEM SHALL 視為成功的零筆結果，輸出 `count: 0`、空 `records` 與 `message: 找不到對應工單`。
@@ -63,11 +63,11 @@
 
 ## 資料與 API
 
-- 輸入：`query-daily-inspection-work-orders <車組/車號> <檢修日期>`。
+- 輸入：`query-daily-inspection-work-orders-by-vehicle-and-date <車組/車號> <檢修日期條件>`。
 - 車組／車號：trim 後非空字串，原值作為 MMIS `C:3` 查詢值。
-- 檢修日期：`YYYY/M/D` 或 `YYYY/MM/DD`，須為有效日期；送往 MMIS 前正規化為 `>YYYY/MM/DD`。
-- 固定條件：`C:1=新竹機務段`。
-- 成功輸出：`{"success": true, "query_name": "查詢日檢工單", "vehicle": "...", "inspection_date": "YYYY/MM/DD", "count": N, "records": [...]}`。
+- 檢修日期條件：日期前可省略運算子或使用 `=`、`>`、`<`、`>=`、`<=`；日期須為有效的 `YYYY/M/D` 或 `YYYY/MM/DD`，送往 MMIS 前補零並保留運算子。
+- 固定條件：`C:1=新竹機務段`、`C:8=執行中已派工,核簽中`。
+- 成功輸出：`{"success": true, "query_name": "以車號與日期查詢日檢工單", "vehicle": "...", "inspection_date": "YYYY/MM/DD", "count": N, "records": [...]}`；欄位結構維持不變，`inspection_date` 不含查詢運算子。
 - 零筆輸出：成功輸出另含 `"message": "找不到對應工單"`。
 - 錯誤輸出：沿用 CLI 的 `success: false`、錯誤型別與安全訊息，exit code 為 1。
 - 資料模型變更：無。
@@ -83,8 +83,9 @@
 
 ## 驗收標準
 
-- `python -m mmis_connector query-daily-inspection-work-orders 703 2026/09/22` 能解析兩個參數並呼叫 HTTP-only 查詢模組。
-- 查詢事件順序與錄製證據一致：進入 1A、所有記錄、固定檢修段、車組／車號、檢修日期、filterrows。
+- `python -m mmis_connector query-daily-inspection-work-orders-by-vehicle-and-date 717 '>2026/09/23'` 能解析兩個參數並呼叫 HTTP-only 查詢模組。
+- 查詢事件順序與 2026-09-24 錄製證據一致：進入 1A、所有記錄、固定檢修段、固定工作單狀態、檢修日期、車組／車號、filterrows。
+- 無運算子與 `=`、`>`、`<`、`>=`、`<=` 皆有測試，輸出 JSON 欄位結構維持原契約。
 - 已錄製成功 DOM 可離線解析出 1 筆資料，且工作單為對應的 `115-1A-*` 值。
 - 無資料 fixture 回傳 exit code 0，JSON 內含 `count: 0`、`records: []` 與「找不到對應工單」。
 - 無效或不存在日期在任何登入／HTTP 呼叫前被拒絕。
@@ -93,7 +94,7 @@
 
 ## 驗證計畫
 
-- 單元測試：參數與日期驗證、event 順序、成功表格解析、空結果、異常回應、CLI dispatch。
+- 單元測試：參數與日期運算子驗證、event 順序、固定狀態、成功表格解析、空結果、異常回應、CLI dispatch。
 - 整合測試：使用錄製的最終 DOM 做唯讀離線解析；不將錄製檔複製進 repo。
 - E2E：若本機 MMIS 網路與有效 `.env` 可用，再以已知條件執行一次 live CLI；未執行時必須列為殘留風險。
 - 視覺：不適用。
@@ -101,5 +102,5 @@
 
 ## 情境預算備註
 
-- 已讀：專案／架構地圖、既有 auth/query/parser/CLI 與測試、MMIS 開發知識、錄製摘要、關鍵 timeline events、成功 DOM。
-- 未讀：與查詢無關的靜態資源與完整 40 萬行 timeline；錄製目錄未提供 README 所述 `raw.har`，因此以 timeline、DOM 與既有已驗證知識交叉確認。
+- 已讀：專案／架構地圖、既有 auth/query/parser/CLI 與測試、MMIS 開發知識、2026-09-24 錄製摘要、workflow 內的去敏感 event payload、成功與零筆 DOM。
+- 未讀：與查詢無關的靜態資源與完整 timeline；錄製目錄未提供 README 所述 `raw.har`，因此以 workflow、DOM 與既有已驗證知識交叉確認。

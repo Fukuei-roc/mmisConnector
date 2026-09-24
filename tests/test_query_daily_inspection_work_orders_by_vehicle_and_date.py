@@ -6,11 +6,13 @@ import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.parser import parse_maximo_table
-from mmis_connector.query_daily_inspection_work_orders import (
+from mmis_connector.query_daily_inspection_work_orders_by_vehicle_and_date import (
     DEPOT,
     REQUIRED_HEADERS,
+    WORK_ORDER_STATUS,
     DailyInspectionWorkOrderQuery,
     normalize_inspection_date,
+    normalize_inspection_date_condition,
     normalize_vehicle,
 )
 
@@ -18,8 +20,8 @@ from mmis_connector.query_daily_inspection_work_orders import (
 STATE = PageState("session", 3, "csrf", "zz_pmwo1a", "https://example.test/app")
 RECORDED_DOM = Path(
     r"C:\Docker\maximoFlowRecorder\recordings"
-    r"\2026-09-23_query-daily-inspection-work-orders\dom"
-    r"\2026-09-23T054325-594.html"
+    r"\2026-09-24_query-daily-inspection-work-orders-by-vehicle-and-date\dom"
+    r"\2026-09-24T050623-611.html"
 )
 
 
@@ -28,6 +30,7 @@ def _table(*, no_rows: bool = False, total: int = 1) -> str:
         1: "檢修段",
         3: "車組/車號",
         5: "工作單",
+        8: "工作單狀態",
         11: "檢修日期",
     }
     header_html = "".join(
@@ -44,6 +47,7 @@ def _table(*, no_rows: bool = False, total: int = 1) -> str:
             1: DEPOT,
             3: "EMU703",
             5: "115-1A-70877",
+            8: "執行中已派工",
             11: "2026/09/23",
         }.items()
     )
@@ -56,7 +60,9 @@ def _run(monkeypatch: pytest.MonkeyPatch, result_page: str):
     client = SimpleNamespace(state=STATE)
     query = DailyInspectionWorkOrderQuery(client)
     calls: list[dict[str, Any]] = []
-    responses = iter(["<div>mainrec_menus</div>", _table(), "", "", "", result_page])
+    responses = iter(
+        ["<div>mainrec_menus</div>", _table(), "", "", "", "", result_page]
+    )
     monkeypatch.setattr(query, "_load_app", lambda: STATE)
 
     def fake_post_event(**kwargs: Any) -> str:
@@ -64,7 +70,7 @@ def _run(monkeypatch: pytest.MonkeyPatch, result_page: str):
         return next(responses)
 
     monkeypatch.setattr(query, "_post_event", fake_post_event)
-    return query.run(" 703 ", "2026/9/22"), calls
+    return query.run(" 703 ", ">2026/9/22"), calls
 
 
 def test_normalizes_inputs_before_network_use() -> None:
@@ -73,7 +79,34 @@ def test_normalizes_inputs_before_network_use() -> None:
     assert normalize_inspection_date(">2026/09/22") == "2026/09/22"
 
 
-@pytest.mark.parametrize("value", ["", "2026-09-22", "2026/02/30", ">>2026/09/22"])
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026/9/23", ("2026/09/23", "2026/09/23")),
+        ("=2026/9/23", ("2026/09/23", "=2026/09/23")),
+        (">2026/9/23", ("2026/09/23", ">2026/09/23")),
+        ("<2026/9/23", ("2026/09/23", "<2026/09/23")),
+        (">=2026/9/23", ("2026/09/23", ">=2026/09/23")),
+        ("<=2026/9/23", ("2026/09/23", "<=2026/09/23")),
+    ],
+)
+def test_normalizes_supported_inspection_date_conditions(
+    value: str, expected: tuple[str, str]
+) -> None:
+    assert normalize_inspection_date_condition(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "2026-09-22",
+        "2026/02/30",
+        ">>2026/09/22",
+        "=>2026/09/22",
+        "!=2026/09/22",
+    ],
+)
 def test_rejects_invalid_inspection_date(value: str) -> None:
     with pytest.raises(MMISClientError, match="檢修日期"):
         normalize_inspection_date(value)
@@ -88,15 +121,26 @@ def test_run_replays_recorded_filter_sequence(monkeypatch: pytest.MonkeyPatch) -
     result, calls = _run(monkeypatch, _table())
 
     assert result["count"] == 1
+    assert result["query_name"] == "以車號與日期查詢日檢工單"
+    assert result["inspection_date"] == "2026/09/22"
     assert result["records"][0]["工作單"] == "115-1A-70877"
     assert [(call["event_type"], call["value"]) for call in calls] == [
         ("click", ""),
         ("click", "useAllRecsQuery_OPTION"),
         ("setvalue", DEPOT),
-        ("setvalue", "703"),
+        ("setvalue", WORK_ORDER_STATUS),
         ("setvalue", ">2026/09/22"),
+        ("setvalue", "703"),
         ("filterrows", ""),
     ]
+    assert [call["target_id"] for call in calls[2:]] == [
+        "table_tfrow_[C:1]_txt-tb",
+        "table_tfrow_[C:8]_txt-tb",
+        "table_tfrow_[C:11]_txt-tb",
+        "table_tfrow_[C:3]_txt-tb",
+        "table_tbod_tfrow-tr",
+    ]
+    assert [call["xhr_seq"] for call in calls] == list(range(1, 8))
     assert calls[-1]["target_id"] == "table_tbod_tfrow-tr"
 
 
@@ -127,6 +171,7 @@ def test_parse_recorded_daily_inspection_dom() -> None:
     )
 
     assert len(rows) == 1
-    assert rows[0]["車組/車號"] == "EMU703"
+    assert rows[0]["車組/車號"] == "EMU717"
     assert rows[0]["工作單"].startswith("115-1A-")
-    assert rows[0]["檢修日期"] == "2026/09/23"
+    assert rows[0]["工作單狀態"] == "執行中已派工"
+    assert rows[0]["檢修日期"] == "2026/09/24"

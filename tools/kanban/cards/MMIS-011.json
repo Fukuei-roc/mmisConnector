@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-011",
+  "title": "以車號與日期查詢日檢工單增量調整",
+  "content": "重新命名日檢工單查詢，新增固定工作單狀態，並支援檢修日期比較運算子。",
+  "stage": "acceptance",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-24",
+  "epic": "MMIS HTTP 日檢工單查詢",
+  "userStory": "依車號與日期查詢日檢工單",
+  "dependsOn": ["MMIS-008"],
+  "order": 11,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢工單查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢工單查詢/task-cards/MMIS-011.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢工單查詢/verification/MMIS-011.md", "pr": ""},
+  "refs": ["src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py", "src/mmis_connector/cli.py", "tests/test_query_daily_inspection_work_orders_by_vehicle_and_date.py", "README.md"],
+  "evidence": {"commands": ["targeted pytest", "python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "live query-daily-inspection-work-orders-by-vehicle-and-date"], "findings": ["65 passed and 2 skipped in full suite", "Live query returned success=true and count=1", "All supported date operators covered by unit tests", "Security and maintainability review found no blockers"], "residual": "Recording lacks raw.har; live run covered > while remaining operators are unit-tested; multi-page results remain fail closed."},
+  "comments": ["2026-09-24：使用者明確要求依新錄製調整狀態與日期條件、重新命名程式並更新 README。"]
+}

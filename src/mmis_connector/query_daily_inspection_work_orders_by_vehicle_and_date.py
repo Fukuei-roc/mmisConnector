@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any
 
 from .auth import MMISClientError, MMISSession, PageState
@@ -13,9 +14,19 @@ from .parser import (
 )
 
 
-QUERY_NAME = "查詢日檢工單"
+QUERY_NAME = "以車號與日期查詢日檢工單"
 DEPOT = "新竹機務段"
-REQUIRED_HEADERS = {"檢修段", "車組/車號", "工作單", "檢修日期"}
+WORK_ORDER_STATUS = "執行中已派工,核簽中"
+REQUIRED_HEADERS = {
+    "檢修段",
+    "車組/車號",
+    "工作單",
+    "工作單狀態",
+    "檢修日期",
+}
+DATE_CONDITION_RE = re.compile(
+    r"^(?P<operator>>=|<=|=|>|<)?(?P<date>\d{4}/\d{1,2}/\d{1,2})$"
+)
 
 
 def normalize_vehicle(value: str) -> str:
@@ -27,13 +38,30 @@ def normalize_vehicle(value: str) -> str:
 
 def normalize_inspection_date(value: str) -> str:
     raw = value.strip()
-    if raw.startswith(">"):
-        raw = raw[1:].strip()
+    match = DATE_CONDITION_RE.fullmatch(raw)
+    if match is None:
+        raise MMISClientError(
+            "檢修日期必須是有效的 YYYY/MM/DD 日期，"
+            "並可使用 =、>、<、>= 或 <= 運算子"
+        )
     try:
-        parsed = datetime.strptime(raw, "%Y/%m/%d")
+        parsed = datetime.strptime(match.group("date"), "%Y/%m/%d")
     except ValueError as exc:
-        raise MMISClientError("檢修日期必須是有效的 YYYY/MM/DD 日期") from exc
+        raise MMISClientError(
+            "檢修日期必須是有效的 YYYY/MM/DD 日期，"
+            "並可使用 =、>、<、>= 或 <= 運算子"
+        ) from exc
     return parsed.strftime("%Y/%m/%d")
+
+
+def normalize_inspection_date_condition(value: str) -> tuple[str, str]:
+    raw = value.strip()
+    match = DATE_CONDITION_RE.fullmatch(raw)
+    normalized_date = normalize_inspection_date(raw)
+    if match is None:  # normalize_inspection_date already raises; narrows the type.
+        raise AssertionError("unreachable")
+    operator = match.group("operator") or ""
+    return normalized_date, f"{operator}{normalized_date}"
 
 
 class DailyInspectionWorkOrderQuery:
@@ -100,13 +128,16 @@ class DailyInspectionWorkOrderQuery:
 
     def run(self, vehicle: str, inspection_date: str) -> dict[str, Any]:
         normalized_vehicle = normalize_vehicle(vehicle)
-        normalized_date = normalize_inspection_date(inspection_date)
+        normalized_date, date_condition = normalize_inspection_date_condition(
+            inspection_date
+        )
         state, schema = self.open_all_records()
         prefix = schema.prefix
         values = (
-            (1, DEPOT, 3),
-            (3, normalized_vehicle, 11),
-            (11, f">{normalized_date}", 10),
+            (1, DEPOT, 8),
+            (8, WORK_ORDER_STATUS, 11),
+            (11, date_condition, 3),
+            (3, normalized_vehicle, 5),
         )
         for xhr_seq, (column, value, focus_column) in enumerate(values, start=3):
             self._post_event(
@@ -120,11 +151,11 @@ class DailyInspectionWorkOrderQuery:
 
         result_response = self._post_event(
             state=self.client.state or state,
-            current_focus=f"{prefix}_tfrow_[C:10]_txt-tb",
+            current_focus=f"{prefix}_tfrow_[C:5]_txt-tb",
             event_type="filterrows",
             target_id=f"{prefix}_tbod_tfrow-tr",
             value="",
-            xhr_seq=6,
+            xhr_seq=7,
         )
         result_schema, records = parse_maximo_table(
             result_response,
