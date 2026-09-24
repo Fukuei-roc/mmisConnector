@@ -9,7 +9,7 @@ from mmis_connector.parser import MaximoTableSchema, parse_maximo_table
 from mmis_connector.query_daily_inspection_work_orders_by_vehicle_and_date import (
     REQUIRED_HEADERS,
 )
-from mmis_connector.read_daily_inspection_work_order import (
+from mmis_connector.query_fault_notices_linked_to_daily_inspection_work_order_by_number import (
     FAULT_HEADERS,
     FAULT_TABLE_SUMMARY,
     DailyInspectionWorkOrderDetailReader,

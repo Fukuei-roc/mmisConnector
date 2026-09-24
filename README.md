@@ -8,7 +8,7 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 |---|---|---|
 | 比較並查詢本段未處理故障通報 | `query-unprocessed-fault-notices` | 無 |
 | 以車號與日期查詢日檢工單 | `query-daily-inspection-work-orders-by-vehicle-and-date` | 車組／車號、檢修日期條件 |
-| 以工作單號查詢日檢工單內容 | `query-daily-inspection-work-order-by-number` | 工作單號 |
+| 以工作單號查詢日檢工單關聯的故障通報 | `query-daily-inspection-work-order-by-number` | 工作單號 |
 
 ## 功能特色
 
@@ -158,7 +158,7 @@ if ($result.count -eq 0) {
 }
 ```
 
-### 以工作單號查詢日檢工單內容
+### 以工作單號查詢日檢工單關聯的故障通報
 
 ```powershell
 python -m mmis_connector `
@@ -349,7 +349,7 @@ JSON stdout
 | `src/mmis_connector/events.py` | 共用 Maximo event POST、CSRF／sequence header、app 切換與 shared-session 錯誤偵測 |
 | `src/mmis_connector/query_unprocessed_fault_notices.py` | 比較兩個未處理通報儲存查詢，並擷取選定結果的所有分頁 |
 | `src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py` | 驗證車號／日期條件，套用固定狀態並查詢動力車日檢(1A)工單 |
-| `src/mmis_connector/read_daily_inspection_work_order.py` | 驗證工作單號、進入唯一日檢工單並擷取故障通報管理 |
+| `src/mmis_connector/query_fault_notices_linked_to_daily_inspection_work_order_by_number.py` | 驗證工作單號、進入唯一日檢工單並擷取關聯的故障通報 |
 | `src/mmis_connector/parser.py` | 展開 XML／CDATA、依 table summary 與動態 prefix 解析表頭、資料列、多行文字、checkbox 與分頁資訊 |
 | `src/mmis_connector/cli.py` | 子命令 dispatch、參數數量檢查、exit code 與 JSON 輸出 |
 | `src/mmis_connector/__init__.py` | 公開 Python API |

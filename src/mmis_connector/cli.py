@@ -10,7 +10,9 @@ from .query_daily_inspection_work_orders_by_vehicle_and_date import (
     DailyInspectionWorkOrderQuery,
 )
 from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
-from .read_daily_inspection_work_order import DailyInspectionWorkOrderDetailReader
+from .query_fault_notices_linked_to_daily_inspection_work_order_by_number import (
+    DailyInspectionWorkOrderDetailReader,
+)
 
 
 QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND = "query-unprocessed-fault-notices"
