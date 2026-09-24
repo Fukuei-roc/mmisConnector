@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-010",
+  "title": "比較兩種未處理通報並擷取較多者",
+  "content": "依序比較車輛配屬段與開單時所屬段的未處理故障通報總筆數，擷取較多者，平手優先車輛配屬段。",
+  "stage": "acceptance",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-24",
+  "epic": "MMIS HTTP 未處理通報擷取",
+  "userStory": "查詢並輸出故障通報 JSON",
+  "dependsOn": ["MMIS-007"],
+  "order": 10,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未處理通報擷取/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未處理通報擷取/task-cards/MMIS-010.md", "verificationReport": "ai/artifacts/MMIS HTTP 未處理通報擷取/verification/MMIS-010.md", "pr": ""},
+  "refs": ["src/mmis_connector/query_unprocessed_fault_notices.py", "tests/test_query_unprocessed_fault_notices.py", "README.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_query_unprocessed_fault_notices.py -q", "python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "live query-unprocessed-fault-notices summary"], "findings": ["10 targeted tests passed", "56 passed and 3 skipped in full suite", "Live query selected 車輛配屬段 on a 14-to-14 tie and returned 14 records", "Security and maintainability review found no blockers"], "residual": "Recording lacks raw.har; live run covered the tie branch only, while unequal-count and pagination branches are covered by automated tests."},
+  "comments": ["2026-09-24：使用者明確要求依錄製順序比較兩個 saved query，保留分頁與輸出格式。", "2026-09-24：使用者追加要求將本次行為變更同步至 README.md。"]
+}

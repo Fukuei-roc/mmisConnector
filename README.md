@@ -6,7 +6,7 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 
 | 功能 | CLI 子命令 | 輸入 |
 |---|---|---|
-| 查詢本段未處理故障通報 | `query-unprocessed-fault-notices` | 無 |
+| 比較並查詢本段未處理故障通報 | `query-unprocessed-fault-notices` | 無 |
 | 查詢動力車日檢(1A)工單 | `query-daily-inspection-work-orders` | 車組／車號、檢修日期 |
 | 以工作單號查詢日檢工單內容 | `query-daily-inspection-work-order-by-number` | 工作單號 |
 
@@ -17,7 +17,8 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 - 從 MMIS 回應解析 `PAGESEQNUM`、`UISESSIONID`、CSRF token 與 app ID，不在原始碼寫死動態值。
 - 共用 Maximo `maximo.jsp` event transport 與 app 切換流程。
 - 解析 Maximo XML／CDATA、動態表格 ID、文字欄位與 checkbox。
-- 支援故障通報多頁結果擷取與筆數一致性檢查。
+- 依序比較「未處理故障通報(車輛配屬段)」與「未處理故障通報(開單時所屬段)」，擷取筆數較多者；平手時優先車輛配屬段。
+- 支援選定故障通報的多頁結果擷取與筆數一致性檢查。
 - 日檢工單支援合法日期驗證、空結果及不完整結果保護。
 - 可依工作單號進入唯一日檢工單，擷取「故障通報管理」，並明確區分空表與解析失敗。
 - 成功與失敗皆輸出可解析 JSON；不輸出密碼、cookie、CSRF token 或 session ID。
@@ -103,10 +104,11 @@ python -m mmis_connector query-unprocessed-fault-notices
 
 1. 登入 MMIS 並載入啟動中心。
 2. 進入 `ZZ_FNM`「故障通報管理」。
-3. 開啟儲存查詢選單。
-4. 套用「本段未處理通報(車輛配屬段)」。
-5. 依表格分頁控制逐頁取得所有結果。
-6. 驗證每頁範圍、總筆數與合併筆數後輸出 JSON。
+3. 依序套用「本段未處理通報(車輛配屬段)」與「本段未處理通報(開單時所屬段)」。
+4. 比較兩個查詢的總筆數，選擇筆數較多者；筆數相同時選擇車輛配屬段。
+5. 若選擇車輛配屬段，在比較完成後重新切回該查詢，確保後續分頁狀態正確。
+6. 依選定查詢的表格分頁控制逐頁取得所有結果。
+7. 驗證每頁範圍、總筆數與合併筆數後輸出 JSON。
 
 PowerShell 使用範例：
 
@@ -226,6 +228,8 @@ if (-not $result.has_fault_notices) {
 
 查無資料時，`count` 為 `0`，且 `records` 為空陣列。
 
+`query_name` 會是實際選定的查詢名稱：「本段未處理通報(車輛配屬段)」或「本段未處理通報(開單時所屬段)」。其他輸出鍵與 `records` 欄位格式不變。
+
 ### 日檢工單成功結果
 
 ```json
@@ -341,7 +345,7 @@ JSON stdout
 |---|---|
 | `src/mmis_connector/auth.py` | 讀取 `.env`、登入、同源 HTTPS 檢查、保存 session 與 page state |
 | `src/mmis_connector/events.py` | 共用 Maximo event POST、CSRF／sequence header、app 切換與 shared-session 錯誤偵測 |
-| `src/mmis_connector/query_unprocessed_fault_notices.py` | 套用未處理通報儲存查詢並擷取所有分頁 |
+| `src/mmis_connector/query_unprocessed_fault_notices.py` | 比較兩個未處理通報儲存查詢，並擷取選定結果的所有分頁 |
 | `src/mmis_connector/query_daily_inspection_work_orders.py` | 驗證車號／日期，查詢動力車日檢(1A)工單 |
 | `src/mmis_connector/read_daily_inspection_work_order.py` | 驗證工作單號、進入唯一日檢工單並擷取故障通報管理 |
 | `src/mmis_connector/parser.py` | 展開 XML／CDATA、依 table summary 與動態 prefix 解析表頭、資料列、多行文字、checkbox 與分頁資訊 |
@@ -381,7 +385,7 @@ git diff --check
 - 設定與 page state 解析。
 - HTTPS 同源網路邊界。
 - Maximo event payload 與 shared-session 錯誤。
-- 故障通報的空結果、多頁合併與分頁一致性。
+- 故障通報的雙查詢順序、較大筆數選擇、平手優先、空結果、多頁合併與分頁一致性。
 - 日檢工單輸入正規化、event 順序、有資料、空結果與多頁保護。
 - 工作單號驗證、唯一命中保護、明細點擊、故障通報空表、缺表、多行文字及未完整分頁保護。
 - CLI 子命令與參數 dispatch。
