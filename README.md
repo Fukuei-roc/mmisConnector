@@ -2,13 +2,69 @@
 
 MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用 `requests.Session` 登入 MMIS，重播 Maximo HTTP event，解析 XML／CDATA 中的表格資料，並將結果輸出為 UTF-8 JSON。
 
-目前提供三項功能：
+目前提供四項功能：
 
 | 功能 | CLI 子命令 | 輸入 |
 |---|---|---|
 | 比較並查詢本段未處理故障通報 | `query-unprocessed-fault-notices` | 無 |
 | 以車號與日期查詢日檢工單 | `query-daily-inspection-work-orders-by-vehicle-and-date` | 車組／車號、檢修日期條件 |
 | 以工作單號查詢日檢工單關聯的故障通報 | `query-daily-inspection-work-order-by-number` | 工作單號 |
+| 以工作單號查詢日檢工單並勾稽故障通報 | `query-daily-inspection-work-order-by-number-and-link-fault-notice` | 工作單號、故障通報號 |
+
+## MMIS 資料寫入功能
+
+### 以工作單號查詢日檢工單並勾稽故障通報
+
+英文名稱：**Query Daily Inspection Work Order by Work Order Number and Link Fault Notice**
+
+CLI 子命令：
+
+```powershell
+python -m mmis_connector `
+  query-daily-inspection-work-order-by-number-and-link-fault-notice `
+  115-1A-71002 1150923-36
+```
+
+此功能與其他唯讀查詢不同，執行時會變更 MMIS 系統資料。程式只在工作單查詢結果唯一且完全相符時進入明細；重複勾稽由 MMIS 既有防呆機制處理。
+
+參數順序：
+
+1. `工作單號`，例如 `115-1A-71002`。
+2. `故障通報號`，例如 `1150923-36`。
+
+執行流程：
+
+1. 登入 MMIS 並進入 `ZZ_PMWO1A`「動力車日檢(1A)」。
+2. 切換為「所有記錄」。
+3. 以工作單欄位查詢指定工作單號。
+4. 確認查詢結果恰好一筆，且工作單號與輸入完全相符。
+5. 進入該日檢工單。
+6. 在「故障通報號」欄位輸入指定故障通報號。
+7. 執行「勾稽指定故障通報號」。
+8. 確認「故障通報管理」已出現該故障通報號，才視為勾稽成功。
+9. 返回「清單」頁面，保留可繼續處理下一筆資料的狀態；本次程式至此結束。
+
+成功時輸出：
+
+```json
+{
+  "success": true,
+  "operation_name": "以工作單號查詢日檢工單並勾稽故障通報",
+  "work_order": "115-1A-71002",
+  "fault_notice": "1150923-36",
+  "linked": true,
+  "returned_to_list": true
+}
+```
+
+若寫入請求可能已送達 MMIS、但程式沒有取得可驗證回應，會回報「勾稽結果不明」且不自動重送。若勾稽已確認但無法返回清單，錯誤訊息會明確指出勾稽已完成。
+
+驗證狀態（2026-09-24）：自動測試、錄製 DOM 解析、live MMIS 單筆勾稽及使用者手動測試均已通過。Live 測試確認成功勾稽指定故障通報並返回清單頁面。
+
+手動流程證據位於：
+
+- 錄製檔：`C:\Docker\maximoFlowRecorder\recordings\2026-09-24_query-daily-inspection-work-order-by-number-and-cross-check-fault-reports`
+- 錄製格式說明：`C:\Docker\maximoFlowRecorder\recordings\README.md`
 
 ## 功能特色
 
@@ -21,6 +77,7 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 - 支援選定故障通報的多頁結果擷取與筆數一致性檢查。
 - 日檢工單支援日期比較運算子、固定工作單狀態、空結果及不完整結果保護。
 - 可依工作單號進入唯一日檢工單，擷取「故障通報管理」，並明確區分空表與解析失敗。
+- 可依工作單號與故障通報號執行單筆勾稽，驗證寫入結果後返回清單。
 - 成功與失敗皆輸出可解析 JSON；不輸出密碼、cookie、CSRF token 或 session ID。
 - 所有功能只將 JSON 輸出至 stdout，不建立結果檔案。
 
@@ -350,6 +407,7 @@ JSON stdout
 | `src/mmis_connector/query_unprocessed_fault_notices.py` | 比較兩個未處理通報儲存查詢，並擷取選定結果的所有分頁 |
 | `src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py` | 驗證車號／日期條件，套用固定狀態並查詢動力車日檢(1A)工單 |
 | `src/mmis_connector/query_fault_notices_linked_to_daily_inspection_work_order_by_number.py` | 驗證工作單號、進入唯一日檢工單並擷取關聯的故障通報 |
+| `src/mmis_connector/link_fault_notice_to_daily_inspection_work_order_by_number.py` | 勾稽指定故障通報、驗證結果並返回日檢工單清單 |
 | `src/mmis_connector/parser.py` | 展開 XML／CDATA、依 table summary 與動態 prefix 解析表頭、資料列、多行文字、checkbox 與分頁資訊 |
 | `src/mmis_connector/cli.py` | 子命令 dispatch、參數數量檢查、exit code 與 JSON 輸出 |
 | `src/mmis_connector/__init__.py` | 公開 Python API |
@@ -362,6 +420,7 @@ JSON stdout
 - `UnprocessedFaultNoticeQuery`
 - `DailyInspectionWorkOrderQuery`
 - `DailyInspectionWorkOrderDetailReader`
+- `DailyInspectionWorkOrderFaultNoticeLinker`
 - `MMISClientError`
 
 查詢清單的功能模組採 `query_<domain_objects>.py` 命名，單筆內容讀取採 `read_<domain_object>.py`；登入與 transport 保持在共用模組，個別 Query／Reader 類別只負責一項 MMIS 操作的事件順序與領域規則。
@@ -390,10 +449,13 @@ git diff --check
 - 故障通報的雙查詢順序、較大筆數選擇、平手優先、空結果、多頁合併與分頁一致性。
 - 日檢工單日期運算子正規化、固定工作單狀態、event 順序、有資料、空結果與多頁保護。
 - 工作單號驗證、唯一命中保護、明細點擊、故障通報空表、缺表、多行文字及未完整分頁保護。
+- 故障通報號驗證、動態控制項解析、單一 POST 多事件、勾稽確認、結果不明與返回清單失敗。
 - CLI 子命令與參數 dispatch。
 - 本機錄製 DOM 存在時的離線解析回歸。
 
 預設 pytest 不會登入 MMIS。Live 驗證需另外執行對應 CLI，並使用有效 `.env` 與內網連線。
+
+截至 2026-09-24，本功能完整測試結果為 `85 passed, 3 skipped`；3 個 skipped 均為其他既有功能缺少選用錄製 DOM，不影響本次勾稽功能。本次功能的錄製 DOM、live MMIS 操作及使用者手動驗收均已通過。
 
 ## 安全性
 
@@ -450,11 +512,20 @@ git diff --check
 
 MMIS 的表格欄名、app ID、event target 或 DOM 結構可能已變更，需要重新錄製流程並更新 parser 或功能模組。
 
+### `故障通報勾稽結果不明，需人工確認`
+
+寫入請求可能已送達 MMIS，但程式未取得可驗證回應。為避免重複寫入，程式不會自動重送；請先在 MMIS 人工確認該工單的「故障通報管理」。
+
+### `故障通報勾稽已確認，但返回清單失敗`
+
+故障通報已出現在管理表格，但程式無法確認已返回清單。勾稽本身已完成，請人工返回「清單」頁面。
+
 ## 已知限制
 
 - 每次 CLI 執行都會重新登入，沒有跨程序 session cache。
 - 日檢工單固定使用「新竹機務段」，目前沒有 depot CLI 參數。
 - 日檢工單不擷取多頁；偵測到結果超過單頁時會明確失敗。
 - 以工作單號讀取明細時，故障通報超過單頁會明確失敗，不會輸出不完整資料。
+- 勾稽功能一次只處理一組工作單號與故障通報號；返回清單後不會自動處理下一筆。
 - Maximo app ID、欄位語義或 event protocol 改版時，需要同步更新程式。
 - 不下載 Excel，也不包含排程、圖形介面或瀏覽器 fallback。

@@ -51,6 +51,16 @@
           "definition": "JSON 以 has_fault_notices、count 與 records 提供穩定的空資料判斷契約。"
         }
       ]
+    },
+    {
+      "name": "MMIS HTTP 日檢工單故障通報勾稽",
+      "definition": "以 HTTP-only 流程依工作單號進入動力車日檢(1A)工單，勾稽指定故障通報並返回清單。",
+      "stories": [
+        {
+          "name": "以工作單號勾稽故障通報",
+          "definition": "由 CLI 輸入工作單號與故障通報號，安全地完成單筆勾稽、驗證結果並返回清單。"
+        }
+      ]
     }
   ]
 }

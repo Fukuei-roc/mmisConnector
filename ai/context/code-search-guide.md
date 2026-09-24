@@ -1,6 +1,6 @@
 # 程式碼搜尋指南
 
-狀態：範本佔位符。
+狀態：已更新（2026-09-24）。
 
 ## 搜尋入口
 
@@ -8,7 +8,7 @@
 |---|---|---|
 | CLI 子命令 | `src/mmis_connector/cli.py` | `QUERY_*_COMMAND`, `_commands` |
 | 登入與網路邊界 | `src/mmis_connector/auth.py` | `MMISSession`, `MMISConfig`, `PageState` |
-| Maximo event | `src/mmis_connector/events.py` | `MaximoEventClient`, `load_app`, `post` |
+| Maximo event | `src/mmis_connector/events.py` | `MaximoEventClient`, `load_app`, `post`, `post_events` |
 | 查詢功能 | `src/mmis_connector/query_*.py` | `Query`, `run` |
 | 表格解析 | `src/mmis_connector/parser.py` | `parse_maximo_table`, `parse_*_page_info` |
 | 測試 | `tests/test_*.py` | 對應功能模組或共用層名稱 |
@@ -21,6 +21,7 @@
 | `MaximoEventClient` | 共用 Maximo event POST 與 app 切換 | `src/mmis_connector/events.py` |
 | `DailyInspectionWorkOrderQuery` | 依車號與日期查詢 1A 工單 | `src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py` |
 | `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/query_fault_notices_linked_to_daily_inspection_work_order_by_number.py` |
+| `DailyInspectionWorkOrderFaultNoticeLinker` | 對唯一 1A 工單勾稽指定故障通報、驗證結果並返回清單 | `src/mmis_connector/link_fault_notice_to_daily_inspection_work_order_by_number.py` |
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/query_unprocessed_fault_notices.py` |
 
 ## 給 Agent 的備註

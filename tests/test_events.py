@@ -68,3 +68,54 @@ def test_post_rejects_shared_session_response() -> None:
             value="",
             xhr_seq=1,
         )
+
+
+def test_post_events_sends_multiple_events_in_one_request() -> None:
+    calls = []
+
+    def request(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Response("<server_response />")
+
+    client = SimpleNamespace(
+        event_url="https://example.test/maximo.jsp",
+        config=SimpleNamespace(base_url="https://example.test"),
+        request=request,
+        state=STATE,
+    )
+
+    MaximoEventClient(client).post_events(
+        state=STATE,
+        current_focus="link-button",
+        events=[
+            ("setvalue", "fault-input", "1150923-36"),
+            ("click", "link-button", ""),
+        ],
+        xhr_seq=6,
+    )
+
+    _, kwargs = calls[0]
+    events = json.loads(kwargs["data"]["events"])
+    assert [(event["type"], event["targetId"], event["value"]) for event in events] == [
+        ("setvalue", "fault-input", "1150923-36"),
+        ("click", "link-button", ""),
+    ]
+    assert all(event["csrftokenholder"] == "csrf" for event in events)
+    assert kwargs["headers"]["xhrseqnum"] == "6"
+
+
+def test_post_events_rejects_empty_event_list_before_request() -> None:
+    client = SimpleNamespace(
+        event_url="https://example.test/maximo.jsp",
+        config=SimpleNamespace(base_url="https://example.test"),
+        request=lambda *args, **kwargs: pytest.fail("request must not run"),
+        state=STATE,
+    )
+
+    with pytest.raises(MMISClientError, match="不得為空"):
+        MaximoEventClient(client).post_events(
+            state=STATE,
+            current_focus="focus",
+            events=[],
+            xhr_seq=1,
+        )

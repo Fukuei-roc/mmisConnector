@@ -1,14 +1,14 @@
 # 專案地圖
 
-狀態：已更新（2026-09-21）。
+狀態：已更新（2026-09-24）。
 
 在專案導入（intake）時填寫這份文件。
 
 ## 產品
 
 - 名稱：MMIS Connector
-- 使用者：需要以命令列查詢 MMIS 資料的內部使用者
-- 核心工作流程：讀取環境變數 → HTTP 登入 → 重用 Session → 切換目標 MMIS app → 送出 Maximo event → 解析表格 → 輸出 JSON
+- 使用者：需要以命令列查詢或執行已授權 MMIS 操作的內部使用者
+- 核心工作流程：讀取環境變數 → HTTP 登入 → 重用 Session → 切換目標 MMIS app → 送出 Maximo event → 驗證回應 → 輸出 JSON
 
 ## 技術棧
 
@@ -34,4 +34,5 @@
 | `python -m mmis_connector query-unprocessed-fault-notices` | 查詢本段未處理通報並輸出 JSON | 需先設定 `.env` |
 | `python -m mmis_connector query-daily-inspection-work-orders-by-vehicle-and-date 717 '>2026/09/23'` | 依車組／車號與檢修日期條件查詢日檢工單 | 需先設定 `.env` |
 | `python -m mmis_connector query-daily-inspection-work-order-by-number 115-1A-70048` | 依工作單號查詢日檢工單的故障通報內容 | 需先設定 `.env`；只輸出 stdout JSON |
+| `python -m mmis_connector query-daily-inspection-work-order-by-number-and-link-fault-notice 115-1A-71002 1150923-36` | 對唯一日檢工單勾稽指定故障通報並返回清單 | 會變更 MMIS 資料；Maximo POST 不自動重試 |
 | `python -m pytest` | 執行測試 | 不連線 MMIS 的測試為預設 |

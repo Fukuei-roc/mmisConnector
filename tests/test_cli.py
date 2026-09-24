@@ -121,3 +121,50 @@ def test_daily_inspection_detail_command_requires_one_parameter(capsys) -> None:
     assert exit_code == 1
     assert result["error"] == "MMISClientError"
     assert "<工作單號>" in result["message"]
+
+
+def test_fault_notice_link_command_forwards_two_parameters(
+    monkeypatch, capsys
+) -> None:
+    expected = {"success": True, "linked": True, "returned_to_list": True}
+    received = []
+
+    def handler(args):
+        received.extend(args)
+        return expected
+
+    monkeypatch.setattr(
+        cli,
+        "_commands",
+        lambda: {
+            (
+                cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND
+            ): handler
+        },
+    )
+
+    exit_code = cli.main(
+        [
+            cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND,
+            "115-1A-71002",
+            "1150923-36",
+        ]
+    )
+
+    assert exit_code == 0
+    assert received == ["115-1A-71002", "1150923-36"]
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_fault_notice_link_command_requires_two_parameters(capsys) -> None:
+    exit_code = cli.main(
+        [
+            cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND,
+            "115-1A-71002",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert result["error"] == "MMISClientError"
+    assert "<工作單號> <故障通報號>" in result["message"]

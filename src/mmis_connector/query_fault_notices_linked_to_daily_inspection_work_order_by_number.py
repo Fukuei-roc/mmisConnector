@@ -51,7 +51,8 @@ class DailyInspectionWorkOrderDetailReader:
             xhr_seq=xhr_seq,
         )
 
-    def run(self, work_order: str) -> dict[str, Any]:
+    def open_detail(self, work_order: str) -> tuple[str, str]:
+        """Open one exact work order and return its normalized key and detail."""
         normalized_work_order = normalize_work_order(work_order)
         state, list_schema = self.list_query.open_all_records()
         prefix = list_schema.prefix
@@ -109,6 +110,10 @@ class DailyInspectionWorkOrderDetailReader:
             value="",
             xhr_seq=5,
         )
+        return normalized_work_order, detail_response
+
+    def run(self, work_order: str) -> dict[str, Any]:
+        normalized_work_order, detail_response = self.open_detail(work_order)
         fault_schema, fault_notices = parse_maximo_table(
             detail_response,
             required_headers=FAULT_HEADERS,

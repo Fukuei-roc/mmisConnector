@@ -10,6 +10,9 @@ from .query_daily_inspection_work_orders_by_vehicle_and_date import (
     DailyInspectionWorkOrderQuery,
 )
 from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
+from .link_fault_notice_to_daily_inspection_work_order_by_number import (
+    DailyInspectionWorkOrderFaultNoticeLinker,
+)
 from .query_fault_notices_linked_to_daily_inspection_work_order_by_number import (
     DailyInspectionWorkOrderDetailReader,
 )
@@ -21,6 +24,9 @@ QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND = (
 )
 QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND = (
     "query-daily-inspection-work-order-by-number"
+)
+QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND = (
+    "query-daily-inspection-work-order-by-number-and-link-fault-notice"
 )
 CommandHandler = Callable[[Sequence[str]], dict[str, Any]]
 
@@ -69,6 +75,22 @@ def _query_daily_inspection_work_order_by_number(
     return DailyInspectionWorkOrderDetailReader(client).run(args[0])
 
 
+def _query_daily_inspection_work_order_by_number_and_link_fault_notice(
+    args: Sequence[str],
+) -> dict[str, Any]:
+    if len(args) != 2:
+        raise MMISClientError(
+            "用法: "
+            f"{QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND} "
+            "<工作單號> <故障通報號>"
+        )
+    config = MMISConfig.from_env()
+    client = MMISSession(config)
+    return DailyInspectionWorkOrderFaultNoticeLinker(client).run(
+        args[0], args[1]
+    )
+
+
 def _commands() -> dict[str, CommandHandler]:
     return {
         QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND: _query_unprocessed_fault_notices,
@@ -77,6 +99,9 @@ def _commands() -> dict[str, CommandHandler]:
         ),
         QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND: (
             _query_daily_inspection_work_order_by_number
+        ),
+        QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND: (
+            _query_daily_inspection_work_order_by_number_and_link_fault_notice
         ),
     }
 

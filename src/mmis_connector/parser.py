@@ -36,6 +36,13 @@ class MaximoTableSchema:
     headers: dict[int, str]
 
 
+@dataclass(frozen=True)
+class FaultNoticeLinkControls:
+    input_target: str
+    button_target: str
+    list_target: str
+
+
 def _parse_maximo_markup(response_text: str) -> tuple[str, BeautifulSoup]:
     decoded = html.unescape(response_text)
     # Maximo wraps replacement HTML in XML CDATA. Flatten those sections before
@@ -205,6 +212,49 @@ def parse_maximo_page_info(
                 break
         return FaultNoticePageInfo(start, end, total, next_page_target)
     raise MMISClientError(f"查詢回應找不到{context_name}總筆數")
+
+
+def parse_fault_notice_link_controls(
+    response_text: str,
+) -> FaultNoticeLinkControls:
+    """Resolve dynamic link controls from one daily-inspection detail view."""
+    _, soup = _parse_maximo_markup(response_text)
+
+    input_targets: set[str] = set()
+    for label in soup.find_all("label", attrs={"for": True}):
+        label_text = label.get_text(" ", strip=True).rstrip(":：").strip()
+        if label_text != "故障通報號":
+            continue
+        target = str(label.get("for"))
+        if soup.find("input", id=target) is not None:
+            input_targets.add(target)
+
+    button_targets = {
+        str(button["id"])
+        for button in soup.find_all("button", id=True)
+        if button.get_text(" ", strip=True) == "勾稽指定故障通報號"
+    }
+
+    list_targets: set[str] = set()
+    for anchor in soup.find_all(attrs={"title": "清單"}):
+        tab = anchor.find_parent(attrs={"ctype": "tab", "id": True})
+        if tab is not None:
+            list_targets.add(str(tab["id"]))
+
+    controls = {
+        "故障通報號輸入框": input_targets,
+        "勾稽指定故障通報號按鈕": button_targets,
+        "清單頁籤": list_targets,
+    }
+    for name, targets in controls.items():
+        if len(targets) != 1:
+            raise MMISClientError(f"工單明細找不到唯一的{name}")
+
+    return FaultNoticeLinkControls(
+        input_target=next(iter(input_targets)),
+        button_target=next(iter(button_targets)),
+        list_target=next(iter(list_targets)),
+    )
 
 
 def parse_fault_notice_table(response_text: str) -> list[dict[str, Any]]:

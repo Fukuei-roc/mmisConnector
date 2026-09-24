@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-012",
+  "title": "實作 HTTP-only 日檢工單故障通報勾稽 CLI",
+  "content": "由 CLI 接受工作單號與故障通報號，唯一命中後執行勾稽、驗證結果並返回清單。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-24",
+  "epic": "MMIS HTTP 日檢工單故障通報勾稽",
+  "userStory": "以工作單號勾稽故障通報",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 12,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢工單故障通報勾稽/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢工單故障通報勾稽/task-cards/MMIS-012.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢工單故障通報勾稽/verification/MMIS-012.md", "pr": ""},
+  "refs": ["src/mmis_connector/events.py", "src/mmis_connector/parser.py", "src/mmis_connector/query_fault_notices_linked_to_daily_inspection_work_order_by_number.py", "src/mmis_connector/cli.py", "src/mmis_connector/__init__.py", "tests", "README.md"],
+  "evidence": {"commands": ["targeted pytest", "python -m pytest -rs", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "recorded XHR and DOM checks", "live read-only preflight", "one authorized live link command", "live read-only confirmation"], "findings": ["85 passed, 3 skipped in full suite", "Recorded mutation response contains the exact fault notice and target table", "Live command returned success=true, linked=true, returned_to_list=true", "Post-write read-only query confirmed fault notice 1150923-36 is present", "No browser dependency, HAR, session evidence, credential, or POST retry was added", "Security and maintainability review found no blocking issue"], "residual": "Exact MMIS permission-denial DOM is not recorded; three unrelated legacy recording tests remain skipped because their optional local DOM fixtures are absent; erroneous remote links require manual rollback."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-24", "text": "功能規格確認完畢，請進行程式實作。"}, {"name": "專案使用者", "time": "2026-09-24", "text": "核准 MMIS-012，請開始實作程式。"}, {"name": "專案使用者", "time": "2026-09-24", "text": "測試正常，人工驗收通過。"}]
+}

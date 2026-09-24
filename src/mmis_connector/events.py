@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import re
+from collections.abc import Sequence
 from urllib.parse import urljoin
 
 from .auth import MMISClientError, MMISSession, PageState, parse_page_state
@@ -29,13 +30,33 @@ class MaximoEventClient:
         value: str,
         xhr_seq: int,
     ) -> str:
-        event = {
-            "type": event_type,
-            "targetId": target_id,
-            "value": value,
-            "requestType": "SYNC",
-            "csrftokenholder": state.csrf_token,
-        }
+        return self.post_events(
+            state=state,
+            current_focus=current_focus,
+            events=[(event_type, target_id, value)],
+            xhr_seq=xhr_seq,
+        )
+
+    def post_events(
+        self,
+        *,
+        state: PageState,
+        current_focus: str,
+        events: Sequence[tuple[str, str, str]],
+        xhr_seq: int,
+    ) -> str:
+        if not events:
+            raise MMISClientError("Maximo event 不得為空")
+        event_payload = [
+            {
+                "type": event_type,
+                "targetId": target_id,
+                "value": value,
+                "requestType": "SYNC",
+                "csrftokenholder": state.csrf_token,
+            }
+            for event_type, target_id, value in events
+        ]
         payload = {
             "uisessionid": state.ui_session_id,
             "csrftoken": state.csrf_token,
@@ -46,7 +67,7 @@ class MaximoEventClient:
             "requesttype": "SYNC",
             "responsetype": "text/xml",
             "events": json.dumps(
-                [event], ensure_ascii=False, separators=(",", ":")
+                event_payload, ensure_ascii=False, separators=(",", ":")
             ),
         }
         response = self.client.request(
