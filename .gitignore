@@ -11,4 +11,5 @@ logs/
 __pycache__/
 .pytest_cache/
 tmp/
+data/*.sqlite3*
 

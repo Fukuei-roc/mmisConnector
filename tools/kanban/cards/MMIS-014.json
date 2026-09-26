@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-014",
+  "title": "實作自動勾稽批次領域編排器",
+  "content": "重用單一 MMIS session，逐筆查詢最早日檢工單、執行一次勾稽並將所有結果安全落盤。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-24",
+  "epic": "MMIS HTTP 自動勾稽日檢未處理通報",
+  "userStory": "尋找日檢工單與自動勾稽",
+  "dependsOn": ["MMIS-013"],
+  "order": 14,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/task-cards/MMIS-014.md", "verificationReport": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/verification/MMIS-014.md", "pr": ""},
+  "refs": ["src/mmis_connector/auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders.py", "src/mmis_connector/auto_link_store.py", "tests/test_auto_link_unprocessed_fault_notices.py"],
+  "evidence": {"commands": ["targeted auto-link pytest", "targeted regression pytest", "python -m compileall -q src tests", "git diff --check"], "findings": ["19 new tests passed", "62 passed and 1 optional fixture skipped in targeted regression", "Concurrent execution and unconfirmed linker response blockers fixed"], "residual": "No distributed transaction; linking crash fails closed for manual confirmation; no live batch mutation was authorized."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-24", "text": "核准 MMIS-013～015。"}]
+}

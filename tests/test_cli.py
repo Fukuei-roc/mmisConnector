@@ -168,3 +168,72 @@ def test_fault_notice_link_command_requires_two_parameters(capsys) -> None:
     assert exit_code == 1
     assert result["error"] == "MMISClientError"
     assert "<工作單號> <故障通報號>" in result["message"]
+
+
+def test_auto_link_command_runs_orchestrator_with_one_client_and_store(
+    monkeypatch, capsys
+) -> None:
+    expected = {
+        "success": True,
+        "operation_name": "自動勾稽日檢未處理通報",
+        "total": 2,
+        "linked": 1,
+        "failed": 1,
+    }
+    config = object()
+    client = object()
+    received = {}
+
+    class FakeStore:
+        def __enter__(self):
+            received["store"] = self
+            return self
+
+        def __exit__(self, *_):
+            received["store_closed"] = True
+
+    class FakeOrchestrator:
+        def __init__(self, actual_client, actual_store):
+            received["client"] = actual_client
+            received["orchestrator_store"] = actual_store
+
+        def run(self):
+            return expected
+
+    monkeypatch.setattr(cli.MMISConfig, "from_env", lambda: config)
+    monkeypatch.setattr(cli, "MMISSession", lambda actual: client)
+    monkeypatch.setattr(cli, "AutoLinkStore", FakeStore)
+    monkeypatch.setattr(
+        cli, "AutoLinkUnprocessedFaultNotices", FakeOrchestrator
+    )
+
+    exit_code = cli.main([cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND])
+
+    assert exit_code == 0
+    assert received == {
+        "store": received["store"],
+        "client": client,
+        "orchestrator_store": received["store"],
+        "store_closed": True,
+    }
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_auto_link_command_rejects_parameters_before_loading_config(
+    monkeypatch, capsys
+) -> None:
+    def unexpected_config_load():
+        raise AssertionError("config should not load for invalid arguments")
+
+    monkeypatch.setattr(cli.MMISConfig, "from_env", unexpected_config_load)
+
+    exit_code = cli.main(
+        [cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND, "unexpected"]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert result["error"] == "MMISClientError"
+    assert result["message"] == (
+        f"用法: {cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND}"
+    )

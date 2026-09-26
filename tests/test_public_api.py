@@ -1,4 +1,5 @@
 from mmis_connector import (
+    AutoLinkUnprocessedFaultNotices,
     DailyInspectionWorkOrderDetailReader,
     DailyInspectionWorkOrderFaultNoticeLinker,
     DailyInspectionWorkOrderQuery,
@@ -27,4 +28,11 @@ def test_daily_inspection_work_order_fault_notice_linker_is_public() -> None:
     assert (
         DailyInspectionWorkOrderFaultNoticeLinker.__name__
         == "DailyInspectionWorkOrderFaultNoticeLinker"
+    )
+
+
+def test_auto_link_unprocessed_fault_notices_is_public() -> None:
+    assert (
+        AutoLinkUnprocessedFaultNotices.__name__
+        == "AutoLinkUnprocessedFaultNotices"
     )

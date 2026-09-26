@@ -6,6 +6,10 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from .auth import MMISClientError, MMISConfig, MMISSession
+from .auto_link_store import AutoLinkStore
+from .auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders import (
+    AutoLinkUnprocessedFaultNotices,
+)
 from .query_daily_inspection_work_orders_by_vehicle_and_date import (
     DailyInspectionWorkOrderQuery,
 )
@@ -27,6 +31,9 @@ QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND = (
 )
 QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND = (
     "query-daily-inspection-work-order-by-number-and-link-fault-notice"
+)
+AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND = (
+    "auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders"
 )
 CommandHandler = Callable[[Sequence[str]], dict[str, Any]]
 
@@ -91,6 +98,19 @@ def _query_daily_inspection_work_order_by_number_and_link_fault_notice(
     )
 
 
+def _auto_link_unprocessed_fault_notices(
+    args: Sequence[str],
+) -> dict[str, Any]:
+    if args:
+        raise MMISClientError(
+            f"用法: {AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND}"
+        )
+    config = MMISConfig.from_env()
+    client = MMISSession(config)
+    with AutoLinkStore() as store:
+        return AutoLinkUnprocessedFaultNotices(client, store).run()
+
+
 def _commands() -> dict[str, CommandHandler]:
     return {
         QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND: _query_unprocessed_fault_notices,
@@ -102,6 +122,9 @@ def _commands() -> dict[str, CommandHandler]:
         ),
         QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND: (
             _query_daily_inspection_work_order_by_number_and_link_fault_notice
+        ),
+        AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND: (
+            _auto_link_unprocessed_fault_notices
         ),
     }
 

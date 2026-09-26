@@ -2,7 +2,7 @@
 
 MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用 `requests.Session` 登入 MMIS，重播 Maximo HTTP event，解析 XML／CDATA 中的表格資料，並將結果輸出為 UTF-8 JSON。
 
-目前提供四項功能：
+目前提供五項功能：
 
 | 功能 | CLI 子命令 | 輸入 |
 |---|---|---|
@@ -10,8 +10,37 @@ MMIS Connector 是一套不依賴瀏覽器的 Python 命令列工具。它使用
 | 以車號與日期查詢日檢工單 | `query-daily-inspection-work-orders-by-vehicle-and-date` | 車組／車號、檢修日期條件 |
 | 以工作單號查詢日檢工單關聯的故障通報 | `query-daily-inspection-work-order-by-number` | 工作單號 |
 | 以工作單號查詢日檢工單並勾稽故障通報 | `query-daily-inspection-work-order-by-number-and-link-fault-notice` | 工作單號、故障通報號 |
+| 自動勾稽未處理通報至後續日檢工單 | `auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders` | 無 |
 
 ## MMIS 資料寫入功能
+
+### 自動勾稽未處理通報至後續日檢工單
+
+CLI 子命令：
+
+```powershell
+python -m mmis_connector `
+  auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders
+```
+
+此命令會以單一 MMIS session 查詢本段未處理故障通報，依每筆通報的車號與發生日期尋找最早的後續日檢工單，並在候選工單唯一時執行勾稽。批次狀態逐筆保存在 `data/auto_link_unprocessed_fault_notices.sqlite3`，stdout 只輸出不含逐筆來源資料的 JSON 摘要。
+
+日檢工單查詢前會將來源車號轉為數字查詢值：先移除所有非數字字元；若結果是首位為 `9` 的四位數 900 型單車車號，再移除最後一位車廂碼。例如 `EP9393` 使用 `939` 查詢、`EMU946` 使用 `946`、`EMC722` 使用 `722`。SQLite 仍保存 MMIS 回傳的原始車號，方便稽核。
+
+批次與續跑規則：
+
+1. 沒有未完成批次時，擷取一次未處理通報並建立新批次。
+2. 有未完成批次時，沿用 SQLite 中的來源與進度，不重新擷取來源。
+3. 已完成批次會在下一次執行時清除，然後建立新批次。
+4. 每筆狀態會立即 commit，查詢失敗可在下次執行重試。
+5. 寫入前會先記錄 `linking`；若中斷或勾稽結果無法確認，會轉為 `link_error` 並停止自動重送，必須人工確認 MMIS 實際狀態。
+6. 若最早檢修日期同時有多張不同工單，程式不會自行選擇，該筆會標示為需處理的歧義結果。
+
+成功執行後的摘要包含批次 ID、是否續跑、是否已完成、總筆數、各結果計數、失敗筆數、人工確認筆數與 SQLite 路徑。即使個別資料列需要人工處理，只要批次編排正常完成，CLI 仍會回傳可解析的摘要；應檢查 `completed`、`failed`、`link_error` 與 `manual_review_required` 判斷後續處置。
+
+此命令會批次變更 MMIS 資料。請勿以刪除 SQLite 或直接修改狀態的方式強迫重跑 `link_error`；先在 MMIS 人工核對，以避免重複勾稽。
+
+驗證狀態（2026-09-26）：車號正規化、SQLite 原值保存、續跑與 fail-closed 行為均已通過離線測試及完整回歸。受控 live 批次 run `d95faf6f5c1d49db8749df501d6f2c71` 共處理 12 筆，12 筆皆如預期查無發生日期之後的日檢工單，`linked=0`、`failed=0`、`manual_review_required=0`，因此當次沒有修改 MMIS 資料。
 
 ### 以工作單號查詢日檢工單並勾稽故障通報
 
@@ -78,6 +107,7 @@ python -m mmis_connector `
 - 日檢工單支援日期比較運算子、固定工作單狀態、空結果及不完整結果保護。
 - 可依工作單號進入唯一日檢工單，擷取「故障通報管理」，並明確區分空表與解析失敗。
 - 可依工作單號與故障通報號執行單筆勾稽，驗證寫入結果後返回清單。
+- 可用 SQLite 逐筆保存自動勾稽批次進度，在程序中斷後安全續跑。
 - 成功與失敗皆輸出可解析 JSON；不輸出密碼、cookie、CSRF token 或 session ID。
 - 所有功能只將 JSON 輸出至 stdout，不建立結果檔案。
 
@@ -408,12 +438,15 @@ JSON stdout
 | `src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py` | 驗證車號／日期條件，套用固定狀態並查詢動力車日檢(1A)工單 |
 | `src/mmis_connector/query_fault_notices_linked_to_daily_inspection_work_order_by_number.py` | 驗證工作單號、進入唯一日檢工單並擷取關聯的故障通報 |
 | `src/mmis_connector/link_fault_notice_to_daily_inspection_work_order_by_number.py` | 勾稽指定故障通報、驗證結果並返回日檢工單清單 |
+| `src/mmis_connector/auto_link_store.py` | 保存自動勾稽批次、逐筆狀態、續跑判斷與摘要 |
+| `src/mmis_connector/auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders.py` | 編排未處理通報、日檢工單選擇與安全勾稽 |
 | `src/mmis_connector/parser.py` | 展開 XML／CDATA、依 table summary 與動態 prefix 解析表頭、資料列、多行文字、checkbox 與分頁資訊 |
 | `src/mmis_connector/cli.py` | 子命令 dispatch、參數數量檢查、exit code 與 JSON 輸出 |
 | `src/mmis_connector/__init__.py` | 公開 Python API |
 
 公開的主要 Python 類別：
 
+- `AutoLinkUnprocessedFaultNotices`
 - `MMISConfig`
 - `MMISSession`
 - `PageState`
@@ -450,12 +483,13 @@ git diff --check
 - 日檢工單日期運算子正規化、固定工作單狀態、event 順序、有資料、空結果與多頁保護。
 - 工作單號驗證、唯一命中保護、明細點擊、故障通報空表、缺表、多行文字及未完整分頁保護。
 - 故障通報號驗證、動態控制項解析、單一 POST 多事件、勾稽確認、結果不明與返回清單失敗。
+- 自動勾稽 SQLite 狀態、續跑、工單選擇、逐列容錯、寫入 fail-closed 與摘要。
 - CLI 子命令與參數 dispatch。
 - 本機錄製 DOM 存在時的離線解析回歸。
 
 預設 pytest 不會登入 MMIS。Live 驗證需另外執行對應 CLI，並使用有效 `.env` 與內網連線。
 
-截至 2026-09-24，本功能完整測試結果為 `85 passed, 3 skipped`；3 個 skipped 均為其他既有功能缺少選用錄製 DOM，不影響本次勾稽功能。本次功能的錄製 DOM、live MMIS 操作及使用者手動驗收均已通過。
+截至 2026-09-26，完整離線測試結果為 `119 passed, 3 skipped`；3 個 skipped 均為既有功能缺少選用錄製 DOM。單筆勾稽曾於 2026-09-24 通過 live MMIS 與使用者手動驗收；自動批次勾稽於 2026-09-26 完成受控 live 驗收，當次 12 筆均為預期的無後續日檢工單結果，未觸發 mutation。
 
 ## 安全性
 

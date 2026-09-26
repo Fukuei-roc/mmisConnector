@@ -23,6 +23,7 @@
 | `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/query_fault_notices_linked_to_daily_inspection_work_order_by_number.py` |
 | `DailyInspectionWorkOrderFaultNoticeLinker` | 對唯一 1A 工單勾稽指定故障通報、驗證結果並返回清單 | `src/mmis_connector/link_fault_notice_to_daily_inspection_work_order_by_number.py` |
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/query_unprocessed_fault_notices.py` |
+| `normalize_auto_link_vehicle` | 將未處理通報單車碼轉為自動勾稽使用的數字查詢值；900 型四位碼去除末位車廂碼 | `src/mmis_connector/auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders.py` |
 
 ## 給 Agent 的備註
 

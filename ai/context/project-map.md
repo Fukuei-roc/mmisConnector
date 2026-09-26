@@ -35,4 +35,5 @@
 | `python -m mmis_connector query-daily-inspection-work-orders-by-vehicle-and-date 717 '>2026/09/23'` | 依車組／車號與檢修日期條件查詢日檢工單 | 需先設定 `.env` |
 | `python -m mmis_connector query-daily-inspection-work-order-by-number 115-1A-70048` | 依工作單號查詢日檢工單的故障通報內容 | 需先設定 `.env`；只輸出 stdout JSON |
 | `python -m mmis_connector query-daily-inspection-work-order-by-number-and-link-fault-notice 115-1A-71002 1150923-36` | 對唯一日檢工單勾稽指定故障通報並返回清單 | 會變更 MMIS 資料；Maximo POST 不自動重試 |
+| `python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders` | 批次將未處理通報勾稽至最早的後續日檢工單 | 會變更 MMIS 資料；以 SQLite 續跑，`link_error` 不自動重送 |
 | `python -m pytest` | 執行測試 | 不連線 MMIS 的測試為預設 |

@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-013",
+  "title": "建立自動勾稽 SQLite 可恢復狀態層",
+  "content": "建立固定 SQLite schema、批次生命週期、逐列狀態、續跑判斷與摘要；不含 MMIS 網路操作。",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-24",
+  "epic": "MMIS HTTP 自動勾稽日檢未處理通報",
+  "userStory": "建立批次資料與中斷續跑",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 13,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/task-cards/MMIS-013.md", "verificationReport": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/verification/MMIS-013.md", "pr": ""},
+  "refs": ["src/mmis_connector/auto_link_store.py", "tests/test_auto_link_store.py", ".gitignore"],
+  "evidence": {"commands": ["python -m pytest tests/test_auto_link_store.py -q", "python -m compileall -q src tests", "python -m pip check", "git diff --check"], "findings": ["9 targeted tests passed", "Schema, import rollback, clear/resume, immediate commit, and linking recovery passed", "No broken requirements or syntax errors"], "residual": "SQLite contains internal fault-notice data and relies on local filesystem permissions."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-24", "text": "核准 MMIS-013～015。"}]
+}

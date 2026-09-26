@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-016",
+  "title": "修正自動勾稽的來源車號正規化",
+  "content": "移除來源車號非數字字元，並將 900 型四位單車碼去除末位車廂碼後再查詢日檢工單。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-26",
+  "epic": "MMIS HTTP 自動勾稽日檢未處理通報",
+  "userStory": "尋找日檢工單與自動勾稽",
+  "dependsOn": ["MMIS-014"],
+  "order": 16,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/task-cards/MMIS-016.md", "verificationReport": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/verification/MMIS-016.md", "pr": ""},
+  "refs": ["src/mmis_connector/auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders.py", "tests/test_auto_link_unprocessed_fault_notices.py", "README.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_auto_link_unprocessed_fault_notices.py -q", "python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders"], "findings": ["21 targeted auto-link tests passed", "119 passed and 3 optional fixture tests skipped in the full offline suite", "EP9393 is queried as 939 while SQLite preserves EP9393", "Live run d95faf6f5c1d49db8749df501d6f2c71 completed 12 rows with 12 expected no-match results and no errors", "Architecture, security, test, and code review gates approved"], "residual": "No live mutation occurred because all 12 rows correctly had no later work order; 900-series detection follows the approved four-digit-leading-9 rule."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-26", "text": "確認 EP9393 應以 939 查詢；900 型需去除末位數字，核准開始修正。"}, {"name": "專案使用者", "time": "2026-09-26", "text": "受控 live 執行完成；確認 12 筆全部找不到工單符合目前資料預期。"}]
+}

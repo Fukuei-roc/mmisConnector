@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-015",
+  "title": "串接自動勾稽 CLI、公開 API 與整體驗證",
+  "content": "註冊批次 CLI、公開 orchestrator、補齊文件與完整離線驗證，不執行未授權的 live 批次寫入。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-24",
+  "epic": "MMIS HTTP 自動勾稽日檢未處理通報",
+  "userStory": "以單一命令執行與檢視結果",
+  "dependsOn": ["MMIS-014"],
+  "order": 15,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/task-cards/MMIS-015.md", "verificationReport": "ai/artifacts/MMIS HTTP 自動勾稽日檢未處理通報/verification/MMIS-015.md", "pr": ""},
+  "refs": ["src/mmis_connector/cli.py", "src/mmis_connector/__init__.py", "tests/test_cli.py", "tests/test_public_api.py", "README.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_cli.py tests/test_public_api.py -q", "python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders"], "findings": ["16 targeted CLI/public API tests passed", "119 passed and 3 optional fixture tests skipped in the final full offline suite", "CLI rejects extra arguments before config loading and closes the SQLite store", "Live run d95faf6f5c1d49db8749df501d6f2c71 completed 12 expected no-match rows with no errors", "Architecture, security, test, and code review gates approved"], "residual": "No mutation occurred because all live rows had no later work order; SQLite contains internal data; link_error requires manual MMIS confirmation."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-24", "text": "核准 MMIS-013～015。"}, {"name": "專案使用者", "time": "2026-09-26", "text": "受控 live 執行完成；確認全部找不到工單符合目前資料預期。"}]
+}
