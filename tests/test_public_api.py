@@ -1,11 +1,39 @@
+import mmis_connector
 from mmis_connector import (
     AutoLinkUnprocessedFaultNotices,
     DailyInspectionWorkOrderDetailReader,
     DailyInspectionWorkOrderFaultNoticeLinker,
     DailyInspectionWorkOrderQuery,
+    MMISClientError,
+    MMISConfig,
+    MMISSession,
+    PageState,
     UnprocessedFaultNoticeQuery,
 )
-from mmis_connector.query_unprocessed_fault_notices import QUERY_NAME
+from mmis_connector.fault_notices.query import QUERY_NAME
+
+
+def test_package_public_api_is_preserved() -> None:
+    assert set(mmis_connector.__all__) == {
+        "AutoLinkUnprocessedFaultNotices",
+        "DailyInspectionWorkOrderDetailReader",
+        "DailyInspectionWorkOrderFaultNoticeLinker",
+        "DailyInspectionWorkOrderQuery",
+        "MMISClientError",
+        "MMISConfig",
+        "MMISSession",
+        "PageState",
+        "UnprocessedFaultNoticeQuery",
+    }
+    assert all(
+        symbol is not None
+        for symbol in (
+            MMISClientError,
+            MMISConfig,
+            MMISSession,
+            PageState,
+        )
+    )
 
 
 def test_unprocessed_fault_notice_query_is_public() -> None:

@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-020",
+  "title": "依 domain responsibility 重整 Production modules",
+  "content": "將六個早期操作式 module 實體移至 fault_notices、daily_inspection 與 auto_link packages，保持 class、CLI、MMIS 與 business behavior 不變。",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": false,
+  "createdAt": "2026-09-29",
+  "epic": "MMIS 開發架構整理",
+  "userStory": "建立可持續的 MMIS 功能開發與依賴規範",
+  "dependsOn": ["MMIS-019"],
+  "order": 20,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS 開發架構整理/task-cards/MMIS-020.md", "verificationReport": "ai/artifacts/MMIS 開發架構整理/verification/MMIS-020.md", "pr": ""},
+  "refs": ["src/mmis_connector", "tests/test_architecture.py", "tests/test_public_api.py", "tools/mmis_development", "docs/development/production-source-inventory.md"],
+  "evidence": {"commands": ["python -m pytest", "python -m compileall -q src tests", "python -m compileall -q tools/mmis_development", "python -m pip check", "git diff --check", "git diff --check -- . ':(exclude)Prompt.md'", "package and command import smoke", "non-import AST comparison"], "findings": ["Pre-change baseline: 129 passed and 3 skipped", "Post-change: 130 passed and 3 skipped", "58 targeted tests passed", "Six moved modules have identical non-import AST", "Package-level public API and all executable commands preserved", "No Production import reaches tools or reference code", "Architecture, security, test, and code review gates approved"], "residual": "Raw git diff --check reports two pre-existing trailing-whitespace lines in user-modified Prompt.md; scoped diff check passed. No Live MMIS validation was needed."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-29", "text": "核准 move code, do not redesign behavior；要求 domain package 結構並維持所有 external contracts。"}]
+}

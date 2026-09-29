@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-018",
+  "title": "分離 production CLI 與 MMIS development tools",
+  "content": "將四個部分功能的 executable interface 移到 tools/mmis_development，正式 CLI 僅保留 auto-link，底層 reusable components 不動。",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-29",
+  "epic": "MMIS 開發架構整理",
+  "userStory": "建立可持續的 MMIS 功能開發與依賴規範",
+  "dependsOn": ["MMIS-017"],
+  "order": 18,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS 開發架構整理/task-cards/MMIS-018.md", "verificationReport": "ai/artifacts/MMIS 開發架構整理/verification/MMIS-018.md", "pr": ""},
+  "refs": ["src/mmis_connector/cli.py", "tools/mmis_development", "tests/test_cli.py", "tests/test_development_tools.py", "tests/test_architecture.py", "README.md", "docs/development/mmis-feature-workflow.md"],
+  "evidence": {"commands": ["python -m pytest", "python -m pytest tests/test_cli.py tests/test_development_tools.py tests/test_architecture.py -q", "python -m compileall -q src tests", "python -m compileall -q tools/mmis_development", "python -m pip check", "git diff --check", "git diff --check -- . ':(exclude)Prompt.md'"], "findings": ["Pre-change baseline: 121 passed, 3 skipped", "Post-change: 128 passed, 3 optional recorded-DOM tests skipped", "20 targeted CLI, development tool, and architecture tests passed", "Production CLI exposes only auto-link", "All four development tools import and validate arguments without network access", "Reusable and auto-link business modules are unchanged", "Architecture, security, test, and code review gates approved"], "residual": "The four removed production CLI routes are an intentional breaking interface change. Raw git diff --check still reports two pre-existing trailing-whitespace lines in user-modified Prompt.md; task-scoped diff check passed. No Live MMIS validation was needed."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-29", "text": "明確核准將四個小功能入口移到 development tools，正式 CLI 僅突出 production auto-link；不得移動 reusable modules。"}]
+}

@@ -3,16 +3,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .auth import MMISClientError, MMISSession, PageState
-from .parser import (
+from ..auth import MMISClientError, MMISSession, PageState
+from ..parser import (
     parse_fault_notice_link_controls,
     parse_maximo_table,
     parse_maximo_table_schema,
 )
-from .query_daily_inspection_work_orders_by_vehicle_and_date import (
+from .query import (
     REQUIRED_HEADERS,
 )
-from .query_fault_notices_linked_to_daily_inspection_work_order_by_number import (
+from .reader import (
     FAULT_HEADERS,
     FAULT_TABLE_SUMMARY,
     DailyInspectionWorkOrderDetailReader,

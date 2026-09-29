@@ -1,17 +1,23 @@
 # 程式碼搜尋指南
 
-狀態：已更新（2026-09-24）。
+狀態：已更新（2026-09-29）。
 
 ## 搜尋入口
 
 | 需求 | 從這裡開始 | 搜尋關鍵字 |
 |---|---|---|
-| CLI 子命令 | `src/mmis_connector/cli.py` | `QUERY_*_COMMAND`, `_commands` |
+| Production CLI | `src/mmis_connector/cli.py` | `AUTO_LINK_*_COMMAND`, `_commands` |
+| Development tools | `tools/mmis_development/` | `execute`, `main`, `USAGE` |
 | 登入與網路邊界 | `src/mmis_connector/auth.py` | `MMISSession`, `MMISConfig`, `PageState` |
 | Maximo event | `src/mmis_connector/events.py` | `MaximoEventClient`, `load_app`, `post`, `post_events` |
-| 查詢功能 | `src/mmis_connector/query_*.py` | `Query`, `run` |
+| 故障通報 domain | `src/mmis_connector/fault_notices/` | `UnprocessedFaultNoticeQuery`, `run` |
+| 日檢工單 domain | `src/mmis_connector/daily_inspection/` | `Query`, `Reader`, `Linker` |
+| Auto-link application | `src/mmis_connector/auto_link/` | `orchestrator`, `store`, `AutoLink` |
 | 表格解析 | `src/mmis_connector/parser.py` | `parse_maximo_table`, `parse_*_page_info` |
 | 測試 | `tests/test_*.py` | 對應功能模組或共用層名稱 |
+| 新 MMIS 功能／已驗證操作 | `docs/development/mmis-feature-workflow.md` | `Query`, `Reader`, `Linker`, `MaximoEventClient`, `parse_` |
+| Auto-link 架構邊界 | `tests/test_architecture.py` | `CORE_MODULE`, `reachable`, `subprocess` |
+| Production source 定位 | `docs/development/production-source-inventory.md` | `全檔案分類`, `Mixed-code`, `__init__.py` |
 
 ## 已知符號
 
@@ -19,13 +25,14 @@
 |---|---|---|
 | `MMISSession` | 登入、同源 HTTPS、timeout 與程序內 session | `src/mmis_connector/auth.py` |
 | `MaximoEventClient` | 共用 Maximo event POST 與 app 切換 | `src/mmis_connector/events.py` |
-| `DailyInspectionWorkOrderQuery` | 依車號與日期查詢 1A 工單 | `src/mmis_connector/query_daily_inspection_work_orders_by_vehicle_and_date.py` |
-| `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/query_fault_notices_linked_to_daily_inspection_work_order_by_number.py` |
-| `DailyInspectionWorkOrderFaultNoticeLinker` | 對唯一 1A 工單勾稽指定故障通報、驗證結果並返回清單 | `src/mmis_connector/link_fault_notice_to_daily_inspection_work_order_by_number.py` |
-| `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/query_unprocessed_fault_notices.py` |
-| `normalize_auto_link_vehicle` | 將未處理通報單車碼轉為自動勾稽使用的數字查詢值；900 型四位碼去除末位車廂碼 | `src/mmis_connector/auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders.py` |
+| `DailyInspectionWorkOrderQuery` | 依車號與日期查詢 1A 工單 | `src/mmis_connector/daily_inspection/query.py` |
+| `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/daily_inspection/reader.py` |
+| `DailyInspectionWorkOrderFaultNoticeLinker` | 對唯一 1A 工單勾稽指定故障通報、驗證結果並返回清單 | `src/mmis_connector/daily_inspection/linker.py` |
+| `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/fault_notices/query.py` |
+| `normalize_auto_link_vehicle` | 將未處理通報單車碼轉為自動勾稽使用的數字查詢值；900 型四位碼去除末位車廂碼 | `src/mmis_connector/auto_link/orchestrator.py` |
 
 ## 給 Agent 的備註
 
 - 優先做精確符號搜尋，再做大範圍文字搜尋。
 - 發現對未來任務有幫助的搜尋結果時，記錄在這裡。
+- 不要把 development tool 當成 production dependency；先追到 tool 實際建構的 Python component。

@@ -1,19 +1,19 @@
 """HTTP-only MMIS connector."""
 
 from .auth import MMISClientError, MMISConfig, MMISSession, PageState
-from .auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders import (
+from .auto_link.orchestrator import (
     AutoLinkUnprocessedFaultNotices,
 )
-from .query_daily_inspection_work_orders_by_vehicle_and_date import (
-    DailyInspectionWorkOrderQuery,
-)
-from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
-from .link_fault_notice_to_daily_inspection_work_order_by_number import (
+from .daily_inspection.linker import (
     DailyInspectionWorkOrderFaultNoticeLinker,
 )
-from .query_fault_notices_linked_to_daily_inspection_work_order_by_number import (
+from .daily_inspection.query import (
+    DailyInspectionWorkOrderQuery,
+)
+from .daily_inspection.reader import (
     DailyInspectionWorkOrderDetailReader,
 )
+from .fault_notices.query import UnprocessedFaultNoticeQuery
 
 __all__ = [
     "AutoLinkUnprocessedFaultNotices",

@@ -4,9 +4,9 @@ import html
 from dataclasses import dataclass
 from typing import Any
 
-from .auth import MMISClientError, MMISSession, PageState
-from .events import MaximoEventClient
-from .parser import (
+from ..auth import MMISClientError, MMISSession, PageState
+from ..events import MaximoEventClient
+from ..parser import (
     FaultNoticePageInfo,
     parse_fault_notice_page_info,
     parse_fault_notice_table,

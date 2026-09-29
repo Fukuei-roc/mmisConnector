@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
-from mmis_connector.query_unprocessed_fault_notices import (
+from mmis_connector.fault_notices.query import (
     QUERY_MENU_VALUE,
     QUERY_NAME,
     SECONDARY_QUERY_MENU_VALUE,

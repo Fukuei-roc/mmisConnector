@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-019",
+  "title": "稽核 production source 的 development-only implementation",
+  "content": "逐檔與逐符號判定 src/mmis_connector 是否仍含只供 development tools 使用的程式碼；無可搬項目時明確保留 Production dependencies。",
+  "stage": "done",
+  "risk": "low",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": false,
+  "createdAt": "2026-09-29",
+  "epic": "MMIS 開發架構整理",
+  "userStory": "建立可持續的 MMIS 功能開發與依賴規範",
+  "dependsOn": ["MMIS-018"],
+  "order": 19,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS 開發架構整理/task-cards/MMIS-019.md", "verificationReport": "ai/artifacts/MMIS 開發架構整理/verification/MMIS-019.md", "pr": ""},
+  "refs": ["docs/development/production-source-inventory.md", "src/mmis_connector", "tools/mmis_development", "tests/test_architecture.py", "src/mmis_connector/__init__.py"],
+  "evidence": {"commands": ["python -m pytest tests/test_architecture.py tests/test_auto_link_unprocessed_fault_notices.py tests/test_auto_link_store.py tests/test_public_api.py tests/test_development_tools.py -q", "python -m pytest", "python -m compileall -q src tests", "python -m compileall -q tools/mmis_development", "python -m pip check", "git diff --check", "git diff --check -- . ':(exclude)Prompt.md'"], "findings": ["All 12 production package modules classified", "All four historical modules are direct or indirect auto-link Production dependencies", "49 targeted tests passed", "Post-change: 129 passed and 3 optional recorded-DOM tests skipped", "Runtime source unchanged", "MMIS knowledge base entry added", "Architecture, security, test, and code review gates approved"], "residual": "No module moved because none is development-only. Raw git diff --check still reports two pre-existing trailing-whitespace lines in user-modified Prompt.md; task-scoped diff check passed. No Live MMIS validation was needed."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-29", "text": "要求逐檔反向分析；若四個歷史 module 已成為 auto-link 正式 dependency，禁止為了外觀搬移。"}]
+}

@@ -6,18 +6,18 @@ from datetime import datetime
 import re
 from typing import Any, Protocol
 
-from .auth import MMISClientError, MMISSession
-from .auto_link_store import AutoLinkStore
-from .link_fault_notice_to_daily_inspection_work_order_by_number import (
+from ..auth import MMISClientError, MMISSession
+from ..daily_inspection.linker import (
     DailyInspectionWorkOrderFaultNoticeLinker,
     normalize_fault_notice,
 )
-from .query_daily_inspection_work_orders_by_vehicle_and_date import (
+from ..daily_inspection.query import (
     DailyInspectionWorkOrderQuery,
     normalize_inspection_date,
     normalize_vehicle,
 )
-from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
+from ..fault_notices.query import UnprocessedFaultNoticeQuery
+from .store import AutoLinkStore
 
 
 OPERATION_NAME = "自動勾稽日檢未處理通報"

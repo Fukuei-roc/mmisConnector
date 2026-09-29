@@ -1,6 +1,6 @@
 # 架構地圖
 
-狀態：已更新（2026-09-24）。
+狀態：已更新（2026-09-29）。
 
 ## 系統總覽
 
@@ -25,7 +25,7 @@
 - Maximo list 的動態 table prefix 應由必要欄名集合解析，不寫死錄製中的 prefix。
 - 寫入前需唯一且完全相符的業務鍵；寫入後需以領域資料驗證成功，並區分「結果不明」與後續導覽失敗。
 - stdout 僅輸出 JSON；診斷訊息送 stderr。
-- 功能模組採 `動作_領域物件.py`；查詢類別採 `<DomainObject>Query`，單筆讀取採 `<DomainObject>DetailReader`。
+- Production 功能依 domain package 組織，例如 `fault_notices/query.py`、`daily_inspection/{query,reader,linker}.py` 與 `auto_link/{orchestrator,store}.py`；class 名稱反映 domain responsibility。
 
 ## 應避免的模式
 
@@ -33,3 +33,15 @@
 - 將錄製 HAR 或 session evidence 複製進 repo。
 - 使用瀏覽器 fallback。
 - 對寫入 POST 自動重試，或只憑 HTTP 200 判定寫入成功。
+- 讓 application／orchestrator import CLI handler，或以 subprocess 呼叫其他子命令。
+- 讓 production runtime 依賴 Recorder evidence、探索腳本或 governance artifacts。
+
+## Auto-link 依賴邊界
+
+`AutoLinkUnprocessedFaultNotices` 直接依賴 `UnprocessedFaultNoticeQuery`、
+`DailyInspectionWorkOrderQuery`、`DailyInspectionWorkOrderFaultNoticeLinker` 與
+`AutoLinkStore`。Linker 間接重用 `DailyInspectionWorkOrderDetailReader`；Query／Reader／
+Linker 再重用 `MaximoEventClient`、`MMISSession` 與 `parser`。四個單一操作入口位於
+`tools/mmis_development/`，是平行的 development／diagnostic tools，不是正式 CLI 或
+auto-link runtime dependency。詳細圖與新功能搜尋流程見
+`docs/development/mmis-feature-workflow.md`。

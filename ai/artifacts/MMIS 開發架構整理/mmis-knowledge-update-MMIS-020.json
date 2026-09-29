@@ -1,0 +1,36 @@
+{
+  "section": "toolingNotes",
+  "id": "organize-production-mmis-services-by-domain-package",
+  "entry": {
+    "title": "Organize production MMIS services by domain package",
+    "description": "After a validated MMIS operation becomes a reusable production Query, Reader, Linker, Store, or Orchestrator, organize it under a domain package instead of retaining a filename that describes the original diagnostic CLI operation.",
+    "applicable_when": [
+      "A connector has multiple validated operations in the same MMIS domain",
+      "Diagnostic entrypoints have been separated from production runtime code",
+      "Renaming internal modules while preserving package-level APIs and executable contracts"
+    ],
+    "advantages": [
+      "Makes production ownership and responsibility clear",
+      "Prevents unbounded growth of query_<full-operation-description>.py modules",
+      "Allows development tools to retain discoverable operation names without shaping production architecture"
+    ],
+    "disadvantages": [
+      "Requires coordinated import, test, documentation, and architecture-inventory updates",
+      "Direct consumers of undocumented internal module paths must migrate"
+    ],
+    "recommended_when": [
+      "The production execution closure and public package API are already documented and tested"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Prefer domain/query.py, domain/reader.py, domain/linker.py, and application/orchestrator.py or store.py.",
+      "Keep executable development tools named after the concrete operation they perform.",
+      "Use real moves, preserve class names and package-level exports, and compare non-import AST plus regression tests to prove behavior preservation.",
+      "Do not retain forwarding shims unless the old internal module path is an explicit compatibility contract."
+    ],
+    "replaces": [
+      "name-mmis-feature-modules-by-action-and-domain"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # 專案地圖
 
-狀態：已更新（2026-09-24）。
+狀態：已更新（2026-09-29）。
 
 在專案導入（intake）時填寫這份文件。
 
@@ -25,15 +25,17 @@
 |---|---|---|
 | `src/mmis_connector/` | HTTP client、共用 Maximo event、功能工作流程與 CLI | 不得依賴瀏覽器 |
 | `tests/` | 單元與錄製證據解析測試 | 不存放敏感 HAR |
+| `docs/development/` | MMIS 功能開發流程、已驗證元件與 reference 規則 | 不作 runtime dependency |
+| `tools/mmis_development/` | 四個 MMIS 開發／診斷 executable wrappers | Production 不得 import |
 | `ai/artifacts/` | 規格、任務卡、驗證證據 | 不記錄憑證或 token |
 
 ## 常用指令
 
 | 指令 | 用途 | 備註 |
 |---|---|---|
-| `python -m mmis_connector query-unprocessed-fault-notices` | 查詢本段未處理通報並輸出 JSON | 需先設定 `.env` |
-| `python -m mmis_connector query-daily-inspection-work-orders-by-vehicle-and-date 717 '>2026/09/23'` | 依車組／車號與檢修日期條件查詢日檢工單 | 需先設定 `.env` |
-| `python -m mmis_connector query-daily-inspection-work-order-by-number 115-1A-70048` | 依工作單號查詢日檢工單的故障通報內容 | 需先設定 `.env`；只輸出 stdout JSON |
-| `python -m mmis_connector query-daily-inspection-work-order-by-number-and-link-fault-notice 115-1A-71002 1150923-36` | 對唯一日檢工單勾稽指定故障通報並返回清單 | 會變更 MMIS 資料；Maximo POST 不自動重試 |
+| `python -m tools.mmis_development.query_unprocessed_fault_notices` | Development tool：查詢本段未處理通報 | 需先設定 `.env` |
+| `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | Development tool：依車號與日期查詢日檢工單 | 需先設定 `.env` |
+| `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | Development tool：依工作單號讀取故障通報 | 只輸出 stdout JSON |
+| `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | Development tool：勾稽指定故障通報 | 會變更 MMIS；需受控執行 |
 | `python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders` | 批次將未處理通報勾稽至最早的後續日檢工單 | 會變更 MMIS 資料；以 SQLite 續跑，`link_error` 不自動重送 |
 | `python -m pytest` | 執行測試 | 不連線 MMIS 的測試為預設 |

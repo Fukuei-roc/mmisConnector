@@ -6,32 +6,12 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from .auth import MMISClientError, MMISConfig, MMISSession
-from .auto_link_store import AutoLinkStore
-from .auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders import (
+from .auto_link.orchestrator import (
     AutoLinkUnprocessedFaultNotices,
 )
-from .query_daily_inspection_work_orders_by_vehicle_and_date import (
-    DailyInspectionWorkOrderQuery,
-)
-from .query_unprocessed_fault_notices import UnprocessedFaultNoticeQuery
-from .link_fault_notice_to_daily_inspection_work_order_by_number import (
-    DailyInspectionWorkOrderFaultNoticeLinker,
-)
-from .query_fault_notices_linked_to_daily_inspection_work_order_by_number import (
-    DailyInspectionWorkOrderDetailReader,
-)
+from .auto_link.store import AutoLinkStore
 
 
-QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND = "query-unprocessed-fault-notices"
-QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND = (
-    "query-daily-inspection-work-orders-by-vehicle-and-date"
-)
-QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND = (
-    "query-daily-inspection-work-order-by-number"
-)
-QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND = (
-    "query-daily-inspection-work-order-by-number-and-link-fault-notice"
-)
 AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND = (
     "auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders"
 )
@@ -42,60 +22,6 @@ def _configure_stdio() -> None:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
-
-
-def _query_unprocessed_fault_notices(args: Sequence[str]) -> dict[str, Any]:
-    if args:
-        raise MMISClientError(
-            f"用法: {QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND}"
-        )
-    config = MMISConfig.from_env()
-    client = MMISSession(config)
-    client.login()
-    return UnprocessedFaultNoticeQuery(client).run()
-
-
-def _query_daily_inspection_work_orders_by_vehicle_and_date(
-    args: Sequence[str],
-) -> dict[str, Any]:
-    if len(args) != 2:
-        raise MMISClientError(
-            "用法: "
-            f"{QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND} "
-            "<車組/車號> <檢修日期條件 [=|>|<|>=|<=]YYYY/MM/DD>"
-        )
-    config = MMISConfig.from_env()
-    client = MMISSession(config)
-    return DailyInspectionWorkOrderQuery(client).run(args[0], args[1])
-
-
-def _query_daily_inspection_work_order_by_number(
-    args: Sequence[str],
-) -> dict[str, Any]:
-    if len(args) != 1:
-        raise MMISClientError(
-            f"用法: {QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND} "
-            "<工作單號>"
-        )
-    config = MMISConfig.from_env()
-    client = MMISSession(config)
-    return DailyInspectionWorkOrderDetailReader(client).run(args[0])
-
-
-def _query_daily_inspection_work_order_by_number_and_link_fault_notice(
-    args: Sequence[str],
-) -> dict[str, Any]:
-    if len(args) != 2:
-        raise MMISClientError(
-            "用法: "
-            f"{QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND} "
-            "<工作單號> <故障通報號>"
-        )
-    config = MMISConfig.from_env()
-    client = MMISSession(config)
-    return DailyInspectionWorkOrderFaultNoticeLinker(client).run(
-        args[0], args[1]
-    )
 
 
 def _auto_link_unprocessed_fault_notices(
@@ -113,16 +39,6 @@ def _auto_link_unprocessed_fault_notices(
 
 def _commands() -> dict[str, CommandHandler]:
     return {
-        QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND: _query_unprocessed_fault_notices,
-        QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND: (
-            _query_daily_inspection_work_orders_by_vehicle_and_date
-        ),
-        QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND: (
-            _query_daily_inspection_work_order_by_number
-        ),
-        QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND: (
-            _query_daily_inspection_work_order_by_number_and_link_fault_notice
-        ),
         AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND: (
             _auto_link_unprocessed_fault_notices
         ),

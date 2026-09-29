@@ -6,7 +6,7 @@ import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.parser import parse_maximo_table
-from mmis_connector.query_daily_inspection_work_orders_by_vehicle_and_date import (
+from mmis_connector.daily_inspection.query import (
     DEPOT,
     REQUIRED_HEADERS,
     WORK_ORDER_STATUS,

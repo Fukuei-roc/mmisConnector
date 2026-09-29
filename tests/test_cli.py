@@ -1,173 +1,44 @@
 import json
 
+import pytest
+
 from mmis_connector import cli
 
 
-def test_missing_command_returns_json_error_without_running_handler(
-    capsys,
-) -> None:
+DEVELOPMENT_ONLY_COMMANDS = (
+    "query-unprocessed-fault-notices",
+    "query-daily-inspection-work-orders-by-vehicle-and-date",
+    "query-daily-inspection-work-order-by-number",
+    "query-daily-inspection-work-order-by-number-and-link-fault-notice",
+)
+
+
+def test_production_cli_only_registers_auto_link() -> None:
+    assert set(cli._commands()) == {
+        cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND
+    }
+
+
+def test_missing_command_only_advertises_production_command(capsys) -> None:
     exit_code = cli.main([])
     result = json.loads(capsys.readouterr().out)
+
     assert exit_code == 1
-    assert result["success"] is False
-    assert cli.QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND in result["message"]
-
-
-def test_unknown_command_returns_json_error(capsys) -> None:
-    exit_code = cli.main(["unknown-command"])
-    result = json.loads(capsys.readouterr().out)
-    assert exit_code == 1
-    assert result["error"] == "MMISClientError"
-
-
-def test_valid_command_dispatches_to_registered_handler(monkeypatch, capsys) -> None:
-    expected = {"success": True, "query_name": "test", "count": 0, "records": []}
-    monkeypatch.setattr(
-        cli,
-        "_commands",
-        lambda: {
-            cli.QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND: lambda args: expected
-        },
-    )
-    exit_code = cli.main([cli.QUERY_UNPROCESSED_FAULT_NOTICES_COMMAND])
-    result = json.loads(capsys.readouterr().out)
-    assert exit_code == 0
-    assert result == expected
-
-
-def test_daily_inspection_command_forwards_two_parameters(
-    monkeypatch, capsys
-) -> None:
-    expected = {"success": True, "count": 0, "records": []}
-    received = []
-
-    def handler(args):
-        received.extend(args)
-        return expected
-
-    monkeypatch.setattr(
-        cli,
-        "_commands",
-        lambda: {
-            (
-                cli.QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND
-            ): handler
-        },
+    assert cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND in result["message"]
+    assert all(
+        command not in result["message"]
+        for command in DEVELOPMENT_ONLY_COMMANDS
     )
 
-    exit_code = cli.main(
-        [
-            cli.QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND,
-            "703",
-            ">2026/09/22",
-        ]
-    )
 
-    assert exit_code == 0
-    assert received == ["703", ">2026/09/22"]
-    assert json.loads(capsys.readouterr().out) == expected
-
-
-def test_daily_inspection_command_requires_two_parameters(capsys) -> None:
-    exit_code = cli.main(
-        [
-            cli.QUERY_DAILY_INSPECTION_WORK_ORDERS_BY_VEHICLE_AND_DATE_COMMAND,
-            "703",
-        ]
-    )
+@pytest.mark.parametrize("command", DEVELOPMENT_ONLY_COMMANDS)
+def test_production_cli_rejects_development_only_commands(command, capsys) -> None:
+    exit_code = cli.main([command])
     result = json.loads(capsys.readouterr().out)
 
     assert exit_code == 1
     assert result["error"] == "MMISClientError"
-    assert "<車組/車號> <檢修日期條件" in result["message"]
-
-
-def test_daily_inspection_detail_command_forwards_work_order(
-    monkeypatch, capsys
-) -> None:
-    expected = {"success": True, "count": 0, "records": []}
-    received = []
-
-    def handler(args):
-        received.extend(args)
-        return expected
-
-    monkeypatch.setattr(
-        cli,
-        "_commands",
-        lambda: {
-            cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND: handler
-        },
-    )
-
-    exit_code = cli.main(
-        [
-            cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND,
-            "115-1A-70048",
-        ]
-    )
-
-    assert exit_code == 0
-    assert received == ["115-1A-70048"]
-    assert json.loads(capsys.readouterr().out) == expected
-
-
-def test_daily_inspection_detail_command_requires_one_parameter(capsys) -> None:
-    exit_code = cli.main(
-        [cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_COMMAND]
-    )
-    result = json.loads(capsys.readouterr().out)
-
-    assert exit_code == 1
-    assert result["error"] == "MMISClientError"
-    assert "<工作單號>" in result["message"]
-
-
-def test_fault_notice_link_command_forwards_two_parameters(
-    monkeypatch, capsys
-) -> None:
-    expected = {"success": True, "linked": True, "returned_to_list": True}
-    received = []
-
-    def handler(args):
-        received.extend(args)
-        return expected
-
-    monkeypatch.setattr(
-        cli,
-        "_commands",
-        lambda: {
-            (
-                cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND
-            ): handler
-        },
-    )
-
-    exit_code = cli.main(
-        [
-            cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND,
-            "115-1A-71002",
-            "1150923-36",
-        ]
-    )
-
-    assert exit_code == 0
-    assert received == ["115-1A-71002", "1150923-36"]
-    assert json.loads(capsys.readouterr().out) == expected
-
-
-def test_fault_notice_link_command_requires_two_parameters(capsys) -> None:
-    exit_code = cli.main(
-        [
-            cli.QUERY_DAILY_INSPECTION_WORK_ORDER_BY_NUMBER_AND_LINK_FAULT_NOTICE_COMMAND,
-            "115-1A-71002",
-        ]
-    )
-    result = json.loads(capsys.readouterr().out)
-
-    assert exit_code == 1
-    assert result["error"] == "MMISClientError"
-    assert "<工作單號> <故障通報號>" in result["message"]
+    assert command not in cli._commands()
 
 
 def test_auto_link_command_runs_orchestrator_with_one_client_and_store(

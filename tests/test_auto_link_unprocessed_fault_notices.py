@@ -6,12 +6,12 @@ from typing import Any
 import pytest
 
 from mmis_connector.auth import MMISClientError
-from mmis_connector.auto_link_store import AutoLinkStore
-from mmis_connector.auto_link_unprocessed_fault_notices_to_daily_inspection_work_orders import (
+from mmis_connector.auto_link.orchestrator import (
     AutoLinkUnprocessedFaultNotices,
     normalize_auto_link_vehicle,
     select_earliest_work_order,
 )
+from mmis_connector.auto_link.store import AutoLinkStore
 
 
 def _source(notice: str, vehicle: str = "717") -> dict[str, str]:

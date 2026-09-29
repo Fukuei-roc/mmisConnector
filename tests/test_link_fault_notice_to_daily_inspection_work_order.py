@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
-from mmis_connector.link_fault_notice_to_daily_inspection_work_order_by_number import (
+from mmis_connector.daily_inspection.linker import (
     OPERATION_NAME,
     DailyInspectionWorkOrderFaultNoticeLinker,
     normalize_fault_notice,
@@ -15,10 +15,10 @@ from mmis_connector.parser import (
     parse_maximo_table,
     parse_maximo_table_schema,
 )
-from mmis_connector.query_daily_inspection_work_orders_by_vehicle_and_date import (
+from mmis_connector.daily_inspection.query import (
     REQUIRED_HEADERS,
 )
-from mmis_connector.query_fault_notices_linked_to_daily_inspection_work_order_by_number import (
+from mmis_connector.daily_inspection.reader import (
     FAULT_HEADERS,
     FAULT_TABLE_SUMMARY,
 )

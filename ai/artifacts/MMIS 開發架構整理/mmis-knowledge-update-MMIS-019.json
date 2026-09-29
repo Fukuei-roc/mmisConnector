@@ -1,0 +1,34 @@
+{
+  "section": "toolingNotes",
+  "id": "classify-development-entrypoints-by-production-execution-closure",
+  "entry": {
+    "title": "Separate development entrypoints without moving production domain services",
+    "description": "An MMIS operation may begin as a diagnostic CLI and later become a production application's Query, Reader, or Linker dependency. Classify code by the production execution closure and domain responsibility, not by historical purpose or query_* filename.",
+    "applicable_when": [
+      "Moving exploratory MMIS commands into a development tools area",
+      "Auditing whether query, reader, or linker modules belong in the production package",
+      "Cleaning a repository after integrating a larger MMIS orchestrator"
+    ],
+    "advantages": [
+      "Prevents production from depending on development tools",
+      "Avoids duplicating validated Maximo protocol and parsing logic",
+      "Keeps executable wrappers thin while preserving one formal implementation"
+    ],
+    "disadvantages": [
+      "Some production modules retain names associated with the earlier diagnostic operation",
+      "Requires symbol-level direct and indirect dependency analysis instead of filename-based moves"
+    ],
+    "recommended_when": [
+      "A production orchestrator reuses components first proven through standalone diagnostic commands"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Move argument parsing, stdout JSON shells, and standalone executable entrypoints to development tools.",
+      "Keep Query, Reader, Linker, transport, parser, validation, and mutation verification in production when the orchestrator directly or indirectly uses them.",
+      "Audit mixed modules at method level, but do not move a domain Reader method merely because only a diagnostic wrapper currently invokes that public capability.",
+      "Protect the boundary with an import-closure test and an inventory of every production module."
+    ],
+    "replaces": []
+  }
+}

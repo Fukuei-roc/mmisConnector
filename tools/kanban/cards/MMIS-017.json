@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-017",
+  "title": "整理 MMIS 功能依賴與開發參考架構",
+  "content": "確認 auto-link 不依賴其他 CLI workflow，文件化 reusable component 與 reference 邊界，並新增離線架構測試。",
+  "stage": "done",
+  "risk": "low",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": false,
+  "createdAt": "2026-09-29",
+  "epic": "MMIS 開發架構整理",
+  "userStory": "建立可持續的 MMIS 功能開發與依賴規範",
+  "dependsOn": ["MMIS-001", "MMIS-002", "MMIS-013", "MMIS-014", "MMIS-015", "MMIS-016"],
+  "order": 17,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS 開發架構整理/task-cards/MMIS-017.md", "verificationReport": "ai/artifacts/MMIS 開發架構整理/verification/MMIS-017.md", "pr": ""},
+  "refs": ["README.md", "docs/development/mmis-feature-workflow.md", "tests/test_architecture.py", "ai/context/architecture-map.md", "ai/context/code-search-guide.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_architecture.py tests/test_auto_link_unprocessed_fault_notices.py tests/test_auto_link_store.py tests/test_cli.py -q", "python -m pytest", "python -m compileall -q src tests", "python -m pip check", "git diff --check", "git diff --check -- . ':(exclude)Prompt.md'"], "findings": ["44 targeted offline tests passed", "121 passed and 3 optional recorded-DOM tests skipped in the full suite", "Compile and dependency checks passed", "No production module move or runtime behavior change", "Architecture, security, test, and code review gates approved"], "residual": "Raw git diff --check reports two pre-existing trailing-whitespace lines in the user-modified Prompt.md; task-scoped diff check passed. No Live MMIS validation was needed."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-29", "text": "要求先分析實際 repository 與依賴，再以最小必要修改整理架構並保護既有 auto-link 行為。"}]
+}

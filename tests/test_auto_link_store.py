@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from mmis_connector.auto_link_store import AutoLinkStore, LINK_INTERRUPTED_MESSAGE
+from mmis_connector.auto_link.store import AutoLinkStore, LINK_INTERRUPTED_MESSAGE
 
 
 def _record(notice: str = "1150923-36") -> dict[str, object]:

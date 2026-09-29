@@ -4,9 +4,9 @@ from datetime import datetime
 import re
 from typing import Any
 
-from .auth import MMISClientError, MMISSession, PageState
-from .events import MaximoEventClient
-from .parser import (
+from ..auth import MMISClientError, MMISSession, PageState
+from ..events import MaximoEventClient
+from ..parser import (
     MaximoTableSchema,
     parse_maximo_page_info,
     parse_maximo_table,

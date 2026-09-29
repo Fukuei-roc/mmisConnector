@@ -1,10 +1,24 @@
-我要開發一個能自動運行全部步驟的程式，名稱是「自動勾稽日檢未處理通報」(請翻譯成英文)
+請幫我檢查執行結果
+PS C:\Docker\mmisConnector> python -m mmis_connector `                                          
+>>   auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders
+{
+  "success": true,
+  "operation_name": "自動勾稽日檢未處理通報",
+  "run_id": "7286eccc7bce4990a8e029a38717e5a0",
+  "resumed": false,
+  "completed": true,
+  "total": 16,
+  "linked": 3,
+  "no_matching_work_order": 13,
+  "ambiguous_work_order": 0,
+  "invalid_source_data": 0,
+  "query_failed": 0,
+  "link_error": 0,
+  "failed": 0,
+  "manual_review_required": 0,
+  "database_path": "data\\auto_link_unprocessed_fault_notices.sqlite3"
+}
+PS C:\Docker\mmisConnector> 
 
-步驟如下：
-1.query-unprocessed-fault-notices，查詢「本段未處理通報」並下載儲存到SQLite。
-2.「本段未處理通報」表單中取出，每一筆資料的「發生日期」和「發生日期」。
-3.用query-daily-inspection-work-orders-by-vehicle-and-date，以「發生日期」和「>發生日期」查出對應的「工作單(例)115-1A-71002」，或者查詢不到資料也是正常。
-4.於「本段未處理通報」表單新增欄位「日檢工單號」，填入步驟3查詢到的工作單號或者查詢不到對應工單。
-5.使用query-daily-inspection-work-order-by-number-and-link-fault-notice，以「工作單號」(步驟4查詢到的資料)和「故障通報號」(步驟1查詢到的資料)，執行勾稽故障通報。如果步驟4查詢不到對應工單者跳過此步驟。
-6.執行完步驟1表單內所有內容，然後在表單中寫入執行結果，要考量若意外中斷後能繼續工作。
-7.若重新開始執行程式，會清除上一次執行產生的SQLite表單資料。
+請將程式執行結果的資料庫內容，對照我自己手動查詢的資料："C:\Users\NMMIS\Downloads\故障通報管理0929.csv"
+「可以找到工單」欄位為"TRUE"是可以找到工單的
