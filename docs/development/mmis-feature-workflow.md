@@ -67,6 +67,7 @@ MMISSession
 | Page state | `auth.PageState`、`auth.parse_page_state` | `PAGESEQNUM`、`UISESSIONID`、CSRF token、app ID |
 | Maximo event 與 app switching | `events.MaximoEventClient` | `maximo.jsp`、Referer、sequence header、CDATA redirect、shared-session failure |
 | 未處理通報查詢 | `fault_notices.query.UnprocessedFaultNoticeQuery` | saved query 比較、dynamic table、pagination、一致性檢查 |
+| 未結案通報查詢 | `fault_notices.query.UnclosedFaultNoticeQuery` | 固定 depot／A、B 級 filter、dynamic table、完整 pagination |
 | 日檢工單查詢 | `daily_inspection.query.DailyInspectionWorkOrderQuery` | 固定條件、日期運算子、dynamic table、單頁 fail-closed |
 | 工單明細 | `daily_inspection.reader.DailyInspectionWorkOrderDetailReader` | 唯一工作單、進入明細、故障通報表格 |
 | 故障通報勾稽 | `daily_inspection.linker.DailyInspectionWorkOrderFaultNoticeLinker` | dynamic controls、單一 multi-event POST、mutation verification、不確定結果不重送 |
@@ -75,12 +76,13 @@ MMISSession
 | 正式批次編排 | `auto_link.orchestrator.AutoLinkUnprocessedFaultNotices` | shared session、車號正規化、唯一工單、fail-closed、JSON summary |
 
 這些 module 是 production implementation，不是因為最初由部分功能驗證而產生就視為
-舊程式。四個單一操作 development tools 是它們的人工入口，並同時提供 debugging、行為確認、
+舊程式。五個單一操作 development tools 是它們的人工入口，並同時提供 debugging、行為確認、
 受控 Live 驗證與單筆操作價值。
 
 | Development tool | Tool 建構的正式元件 | 與 auto-link 的關係 |
 |---|---|---|
 | `tools.mmis_development.query_unprocessed_fault_notices` | `UnprocessedFaultNoticeQuery` | Auto-link 直接重用同一 class，不呼叫 tool |
+| `tools.mmis_development.query_unclosed_fault_notices` | `UnclosedFaultNoticeQuery` | 獨立唯讀診斷操作；不由 Auto-link 呼叫 |
 | `tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date` | `DailyInspectionWorkOrderQuery` | Auto-link 直接重用同一 class，不呼叫 tool |
 | `tools.mmis_development.query_daily_inspection_work_order_by_number` | `DailyInspectionWorkOrderDetailReader` | Auto-link 的 Linker 間接重用 Reader，不呼叫 tool |
 | `tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice` | `DailyInspectionWorkOrderFaultNoticeLinker` | Auto-link 直接重用同一 class，不呼叫 tool |
@@ -148,7 +150,7 @@ cli._auto_link_unprocessed_fault_notices
       └─ AutoLinkStore
 ```
 
-Auto-link 不依賴四個 development tools；它們共同使用上表的正式 Python components。
+Auto-link 不依賴五個 development tools；它們共同使用上表的正式 Python components。
 這個邊界由 `tests/test_architecture.py` 的 import graph 與 production import boundary 測試保護。
 
 `src/mmis_connector/` 的逐檔分類、四個歷史功能 module 的直接／間接使用證據與

@@ -1,0 +1,30 @@
+{
+  "section": "commonErrors",
+  "id": "filterrows-response-may-omit-saved-query-toolbar",
+  "entry": {
+    "title": "Filterrows responses may omit the saved-query toolbar",
+    "description": "A successful Maximo filterrows XHR can return only the replaced table fragment and omit the toolbar text that names the active saved query. Requiring the query name again after filtering can reject a valid result.",
+    "applicable_when": [
+      "Replaying a saved-query selection followed by setvalue and filterrows events",
+      "Parsing an HTTP-only Maximo list result from the final filter response"
+    ],
+    "advantages": [
+      "Avoids false failures on valid partial-component responses",
+      "Keeps validation aligned with each response's actual responsibility"
+    ],
+    "disadvantages": [
+      "Requires validating saved-query selection before sending filters"
+    ],
+    "recommended_when": [
+      "Building request-driven MMIS list filters"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Validate the saved-query name in the saved-query click response.",
+      "Validate table schema, page range, total, and row count in the filterrows response instead of requiring toolbar text.",
+      "Confirmed against the 2026-09-30 unclosed fault-notice recording and a live HTTP-only query returning 31 rows."
+    ],
+    "replaces": []
+  }
+}

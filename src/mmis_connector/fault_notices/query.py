@@ -10,6 +10,7 @@ from ..parser import (
     FaultNoticePageInfo,
     parse_fault_notice_page_info,
     parse_fault_notice_table,
+    parse_maximo_table_schema,
 )
 
 
@@ -19,6 +20,11 @@ QUERY_FOCUS_ID = "menu0_本段未處理通報_query_a"
 SECONDARY_QUERY_NAME = "本段未處理通報(開單時所屬段)"
 SECONDARY_QUERY_MENU_VALUE = "本段未處理通報(開單時所屬段)_query"
 SECONDARY_QUERY_FOCUS_ID = "menu0_本段未處理通報(開單時所屬段)_query_a"
+UNCLOSED_QUERY_NAME = "故障通報未結案清單"
+UNCLOSED_QUERY_MENU_VALUE = "故障通報未結案清單_query"
+UNCLOSED_QUERY_FOCUS_ID = "menu0_故障通報未結案清單_query_a"
+UNCLOSED_DEPOT_NAME = "新竹機務段"
+UNCLOSED_INCIDENT_LEVELS = "A,B"
 
 
 @dataclass(frozen=True)
@@ -34,10 +40,15 @@ SECONDARY_QUERY = _SavedQuery(
     SECONDARY_QUERY_MENU_VALUE,
     SECONDARY_QUERY_FOCUS_ID,
 )
+UNCLOSED_QUERY = _SavedQuery(
+    UNCLOSED_QUERY_NAME,
+    UNCLOSED_QUERY_MENU_VALUE,
+    UNCLOSED_QUERY_FOCUS_ID,
+)
 
 
-class UnprocessedFaultNoticeQuery:
-    """Select the larger unprocessed-fault saved query and return all its rows."""
+class _FaultNoticeListQuery:
+    """Shared HTTP-only operations for fault-notice list queries."""
 
     def __init__(self, client: MMISSession) -> None:
         self.client = client
@@ -59,6 +70,21 @@ class UnprocessedFaultNoticeQuery:
             event_type=event_type,
             target_id=target_id,
             value=value,
+            xhr_seq=xhr_seq,
+        )
+
+    def _post_events(
+        self,
+        *,
+        state: PageState,
+        current_focus: str,
+        events: list[tuple[str, str, str]],
+        xhr_seq: int,
+    ) -> str:
+        return self.events.post_events(
+            state=state,
+            current_focus=current_focus,
+            events=events,
             xhr_seq=xhr_seq,
         )
 
@@ -148,6 +174,10 @@ class UnprocessedFaultNoticeQuery:
             raise MMISClientError("故障通報擷取筆數與總筆數不符")
         return records
 
+
+class UnprocessedFaultNoticeQuery(_FaultNoticeListQuery):
+    """Select the larger unprocessed-fault saved query and return all its rows."""
+
     def run(self) -> dict[str, Any]:
         state = self._load_fault_notice_app()
         xhr_seq = 1
@@ -185,6 +215,78 @@ class UnprocessedFaultNoticeQuery:
         return {
             "success": True,
             "query_name": selected_query.name,
+            "count": len(records),
+            "records": records,
+        }
+
+
+class UnclosedFaultNoticeQuery(_FaultNoticeListQuery):
+    """Return all fixed A/B-level unclosed fault notices for Hsinchu depot."""
+
+    @staticmethod
+    def _filter_target(
+        *, prefix: str, headers: dict[int, str], header_name: str
+    ) -> str:
+        columns = [column for column, name in headers.items() if name == header_name]
+        if len(columns) != 1:
+            raise MMISClientError(f"故障通報找不到唯一的「{header_name}」篩選欄位")
+        return f"{prefix}_tfrow_[C:{columns[0]}]_txt-tb"
+
+    def run(self) -> dict[str, Any]:
+        state = self._load_fault_notice_app()
+        selected_response, xhr_seq = self._select_saved_query(
+            state=state,
+            query=UNCLOSED_QUERY,
+            xhr_seq=1,
+        )
+        schema = parse_maximo_table_schema(
+            selected_response,
+            required_headers={"通報號", "事故等級", "配屬段別名稱"},
+        )
+        level_target = self._filter_target(
+            prefix=schema.prefix,
+            headers=schema.headers,
+            header_name="事故等級",
+        )
+        depot_target = self._filter_target(
+            prefix=schema.prefix,
+            headers=schema.headers,
+            header_name="配屬段別名稱",
+        )
+        filter_row_target = f"{schema.prefix}_tbod_tfrow-tr"
+
+        self._post_event(
+            state=self.client.state or state,
+            current_focus=level_target,
+            event_type="setvalue",
+            target_id=depot_target,
+            value=UNCLOSED_DEPOT_NAME,
+            xhr_seq=xhr_seq,
+        )
+        xhr_seq += 1
+        filtered_response = self._post_events(
+            state=self.client.state or state,
+            current_focus=level_target,
+            events=[
+                ("setvalue", level_target, UNCLOSED_INCIDENT_LEVELS),
+                ("filterrows", filter_row_target, ""),
+            ],
+            xhr_seq=xhr_seq,
+        )
+        xhr_seq += 1
+
+        records = self._collect_selected_query(
+            state=state,
+            first_response=filtered_response,
+            xhr_seq=xhr_seq,
+        )
+        return {
+            "success": True,
+            "query_name": UNCLOSED_QUERY_NAME,
+            "filters": {
+                "配屬段別名稱": UNCLOSED_DEPOT_NAME,
+                "事故等級": UNCLOSED_INCIDENT_LEVELS,
+            },
             "count": len(records),
             "records": records,
         }

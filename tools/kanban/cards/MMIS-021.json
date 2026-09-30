@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-021",
+  "title": "實作 HTTP-only 未結案故障通報零參數查詢工具",
+  "content": "套用固定未結案 saved query 與新竹機務段 A、B 級條件，擷取所有分頁並只輸出 stdout JSON。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-30",
+  "epic": "MMIS HTTP 未結案故障通報查詢",
+  "userStory": "查詢未結案故障通報",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 21,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未結案故障通報查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未結案故障通報查詢/task-cards/MMIS-021.md", "verificationReport": "ai/artifacts/MMIS HTTP 未結案故障通報查詢/verification/MMIS-021.md", "pr": ""},
+  "refs": ["src/mmis_connector/fault_notices/query.py", "src/mmis_connector/parser.py", "tools/mmis_development", "tests"],
+  "evidence": {"commands": ["python -m pytest -rs", "python -m compileall -q src tests tools/mmis_development", "python -m pip check", "git diff --check", "security and dependency rg scans", "python -m tools.mmis_development.query_unclosed_fault_notices"], "findings": ["138 passed, 4 unrelated optional recording tests skipped", "Live read-only query: exit code 0, count 31, records 31, 17 fields", "Dynamic table prefix and filter column mapping validated", "No browser dependency, file output, sensitive output, or production-to-tools import", "Architecture, security, test, and code review gates approved"], "residual": "Depends on MMIS saved-query name, required header labels, and Maximo list event/pagination structure; fails closed if these drift."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-30", "text": "核准並開始實作"}, {"name": "Codex", "time": "2026-09-30", "text": "完成離線、錄製證據與唯讀 live 驗證；31 筆完整輸出。"}]
+}

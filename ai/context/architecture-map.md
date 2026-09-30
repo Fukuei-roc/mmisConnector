@@ -41,7 +41,7 @@
 `AutoLinkUnprocessedFaultNotices` 直接依賴 `UnprocessedFaultNoticeQuery`、
 `DailyInspectionWorkOrderQuery`、`DailyInspectionWorkOrderFaultNoticeLinker` 與
 `AutoLinkStore`。Linker 間接重用 `DailyInspectionWorkOrderDetailReader`；Query／Reader／
-Linker 再重用 `MaximoEventClient`、`MMISSession` 與 `parser`。四個單一操作入口位於
+Linker 再重用 `MaximoEventClient`、`MMISSession` 與 `parser`。五個單一操作入口位於
 `tools/mmis_development/`，是平行的 development／diagnostic tools，不是正式 CLI 或
 auto-link runtime dependency。詳細圖與新功能搜尋流程見
 `docs/development/mmis-feature-workflow.md`。

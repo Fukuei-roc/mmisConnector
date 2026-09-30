@@ -17,12 +17,16 @@ from tools.mmis_development import (
 from tools.mmis_development import (
     query_unprocessed_fault_notices as unprocessed_tool,
 )
+from tools.mmis_development import (
+    query_unclosed_fault_notices as unclosed_tool,
+)
 
 
 @pytest.mark.parametrize(
     ("tool", "invalid_args"),
     [
         (unprocessed_tool, ["unexpected"]),
+        (unclosed_tool, ["unexpected"]),
         (work_order_tool, ["703"]),
         (detail_tool, []),
         (link_tool, ["115-1A-71002"]),
@@ -75,6 +79,30 @@ def test_unprocessed_tool_invokes_formal_query(monkeypatch, capsys) -> None:
     monkeypatch.setattr(unprocessed_tool, "UnprocessedFaultNoticeQuery", FakeQuery)
 
     assert unprocessed_tool.main([]) == 0
+    assert client.login_calls == 1
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_unclosed_tool_invokes_formal_query(monkeypatch, capsys) -> None:
+    client = _patch_client(unclosed_tool, monkeypatch)
+    expected = {
+        "success": True,
+        "query_name": "故障通報未結案清單",
+        "filters": {"配屬段別名稱": "新竹機務段", "事故等級": "A,B"},
+        "count": 0,
+        "records": [],
+    }
+
+    class FakeQuery:
+        def __init__(self, actual_client):
+            assert actual_client is client
+
+        def run(self):
+            return expected
+
+    monkeypatch.setattr(unclosed_tool, "UnclosedFaultNoticeQuery", FakeQuery)
+
+    assert unclosed_tool.main([]) == 0
     assert client.login_calls == 1
     assert json.loads(capsys.readouterr().out) == expected
 

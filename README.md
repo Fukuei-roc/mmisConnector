@@ -113,7 +113,7 @@ mmis-connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orde
 
 ## Development / Diagnostic Tools
 
-`tools/mmis_development/` 保存四個薄 executable wrappers，用於 MMIS 功能探索、
+`tools/mmis_development/` 保存五個薄 executable wrappers，用於 MMIS 功能探索、
 HTTP／Maximo event 行為確認、debugging、Production component 驗證、受控 Live validation
 與人工單筆操作。它們直接重用 `src/mmis_connector/` 的正式 Query／Reader／Linker，
 不由 Production CLI dispatch。
@@ -123,6 +123,7 @@ HTTP／Maximo event 行為確認、debugging、Production component 驗證、受
 | Tool | 用途 | 執行方式 | MMIS 影響 |
 |---|---|---|---|
 | 查詢未處理故障通報 | 驗證 saved query、table parsing 與 pagination | `python -m tools.mmis_development.query_unprocessed_fault_notices` | 唯讀 |
+| 查詢未結案故障通報 | 以固定新竹機務段、A/B 級條件輸出完整分頁 JSON | `python -m tools.mmis_development.query_unclosed_fault_notices` | 唯讀 |
 | 依車號與日期查詢日檢工單 | 驗證 filter、固定狀態與日期條件 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | 唯讀 |
 | 依工作單號讀取明細 | 驗證唯一工單與故障通報表格 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | 唯讀 |
 | 依工作單號勾稽故障通報 | 驗證 mutation 與結果確認 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | **會修改資料** |
@@ -163,7 +164,7 @@ src/mmis_connector/
 
 | 路徑 | 責任 |
 |---|---|
-| `fault_notices/query.py` | 查詢、比較並分頁擷取本段未處理故障通報 |
+| `fault_notices/query.py` | 查詢、篩選並分頁擷取未處理或未結案故障通報 |
 | `daily_inspection/query.py` | 依車號與日期條件查詢 1A 日檢工單 |
 | `daily_inspection/reader.py` | 驗證唯一工作單並讀取工單明細與故障通報表格 |
 | `daily_inspection/linker.py` | 勾稽指定故障通報並驗證 mutation 結果 |
@@ -219,6 +220,7 @@ from mmis_connector import (
     MMISConfig,
     MMISSession,
     PageState,
+    UnclosedFaultNoticeQuery,
     UnprocessedFaultNoticeQuery,
 )
 ```
@@ -316,7 +318,7 @@ git diff --check
 
 ## Development Documentation
 
-- [Development Tools README](tools/mmis_development/README.md)：四個 diagnostic tools 的完整用法與 mutation 警示。
+- [Development Tools README](tools/mmis_development/README.md)：五個 diagnostic tools 的完整用法與 mutation 警示。
 - [MMIS Feature Development Workflow](docs/development/mmis-feature-workflow.md)：Recorder 到 Production Application 的生命週期與重用規則。
 - [Production Source Inventory](docs/development/production-source-inventory.md)：Production modules 分類、public API 與 dependency graph。
 - [Architecture Map](ai/context/architecture-map.md)：MMIS session、transport、parser 與 application 邊界。

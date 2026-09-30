@@ -150,7 +150,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         if path.name not in {"__init__.py", "_support.py"}
     ]
 
-    assert len(tool_paths) == 4
+    assert len(tool_paths) == 5
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {

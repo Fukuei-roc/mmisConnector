@@ -89,6 +89,16 @@
           "definition": "記錄 auto-link 實際依賴、已驗證元件索引與 reference 規則，並以離線測試保護 CLI 邊界。"
         }
       ]
+    },
+    {
+      "name": "MMIS HTTP 未結案故障通報查詢",
+      "definition": "以零參數 HTTP-only 命令套用固定未結案查詢與本段 A、B 級條件，將全部分頁資料輸出為 stdout JSON。",
+      "stories": [
+        {
+          "name": "查詢未結案故障通報",
+          "definition": "執行不帶自訂參數的 development tool，取得新竹機務段 A、B 級未結案故障通報完整 JSON，且不產生檔案。"
+        }
+      ]
     }
   ]
 }

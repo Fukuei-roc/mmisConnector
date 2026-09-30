@@ -14,7 +14,7 @@
 | `parser.py` | B：共用基礎設施 | Query／Reader／Linker 皆依賴動態表格、分頁與 controls parsing | 保留 |
 | `cli.py` | A：Production entry point | 只 dispatch auto-link production command | 保留 |
 | `fault_notices/__init__.py` | B：domain package boundary | 標示 fault-notice domain；不擴張 root public API | 保留 |
-| `fault_notices/query.py` | A：Auto-link 必要 | Orchestrator 直接以 `UnprocessedFaultNoticeQuery` 載入 source snapshot | 保留 |
+| `fault_notices/query.py` | A：Auto-link 必要／共用 Query | Orchestrator 直接以 `UnprocessedFaultNoticeQuery` 載入 source snapshot；development tool 使用 `UnclosedFaultNoticeQuery` | 保留；兩者共用 app、saved-query 與分頁協定 |
 | `daily_inspection/__init__.py` | B：domain package boundary | 標示 daily-inspection domain；不擴張 root public API | 保留 |
 | `daily_inspection/query.py` | A：Auto-link 必要 | Orchestrator 直接以 `DailyInspectionWorkOrderQuery` 搜尋後續工單；Reader 亦重用 `open_all_records` | 保留 |
 | `daily_inspection/reader.py` | A：Auto-link 間接必要 | Production Linker 建構 `DailyInspectionWorkOrderDetailReader`，呼叫 `open_detail()`，並重用 fault-table schema | 保留 |
@@ -59,6 +59,7 @@ domain Reader API：它組合 `open_detail()`、fault-table parsing、空表語�
 - `UnprocessedFaultNoticeQuery`、`DailyInspectionWorkOrderQuery`、
   `DailyInspectionWorkOrderDetailReader`、`DailyInspectionWorkOrderFaultNoticeLinker`：
   auto-link 直接或間接依賴的正式 domain services。
+- `UnclosedFaultNoticeQuery`：正式的唯讀 fault-notice Query，由 development tool 提供人工入口。
 - `MMISConfig`、`MMISSession`、`PageState`、`MMISClientError`：共用 infrastructure。
 
 目前沒有只代表 development executable wrapper 的 export；tools modules 不由 package

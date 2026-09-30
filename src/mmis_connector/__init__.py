@@ -13,7 +13,7 @@ from .daily_inspection.query import (
 from .daily_inspection.reader import (
     DailyInspectionWorkOrderDetailReader,
 )
-from .fault_notices.query import UnprocessedFaultNoticeQuery
+from .fault_notices.query import UnclosedFaultNoticeQuery, UnprocessedFaultNoticeQuery
 
 __all__ = [
     "AutoLinkUnprocessedFaultNotices",
@@ -24,5 +24,6 @@ __all__ = [
     "MMISConfig",
     "MMISSession",
     "PageState",
+    "UnclosedFaultNoticeQuery",
     "UnprocessedFaultNoticeQuery",
 ]

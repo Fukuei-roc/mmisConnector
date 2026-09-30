@@ -8,6 +8,7 @@ from mmis_connector import (
     MMISConfig,
     MMISSession,
     PageState,
+    UnclosedFaultNoticeQuery,
     UnprocessedFaultNoticeQuery,
 )
 from mmis_connector.fault_notices.query import QUERY_NAME
@@ -23,6 +24,7 @@ def test_package_public_api_is_preserved() -> None:
         "MMISConfig",
         "MMISSession",
         "PageState",
+        "UnclosedFaultNoticeQuery",
         "UnprocessedFaultNoticeQuery",
     }
     assert all(
@@ -39,6 +41,10 @@ def test_package_public_api_is_preserved() -> None:
 def test_unprocessed_fault_notice_query_is_public() -> None:
     assert UnprocessedFaultNoticeQuery.__name__ == "UnprocessedFaultNoticeQuery"
     assert QUERY_NAME == "本段未處理通報(車輛配屬段)"
+
+
+def test_unclosed_fault_notice_query_is_public() -> None:
+    assert UnclosedFaultNoticeQuery.__name__ == "UnclosedFaultNoticeQuery"
 
 
 def test_daily_inspection_work_order_query_is_public() -> None:
