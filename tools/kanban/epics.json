@@ -99,6 +99,16 @@
           "definition": "執行不帶自訂參數的 development tool，取得新竹機務段 A、B 級未結案故障通報完整 JSON，且不產生檔案。"
         }
       ]
+    },
+    {
+      "name": "MMIS HTTP 故障分析查詢",
+      "definition": "以 HTTP-only 流程依通報號取得故障分析頁籤的五個欄位，並輸出 stdout JSON。",
+      "stories": [
+        {
+          "name": "查詢故障分析",
+          "definition": "輸入單一通報號，取得事故現象、處理概況、故障原因、處理情形與改善對策，且不產生檔案。"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-022",
+  "title": "實作 HTTP-only 故障分析查詢工具",
+  "content": "依通報號唯一篩選故障通報，讀取故障分析五欄並只輸出 stdout JSON。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-09-30",
+  "epic": "MMIS HTTP 故障分析查詢",
+  "userStory": "查詢故障分析",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 22,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 故障分析查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 故障分析查詢/task-cards/MMIS-022.md", "verificationReport": "ai/artifacts/MMIS HTTP 故障分析查詢/verification/MMIS-022.md", "pr": ""},
+  "refs": ["src/mmis_connector/fault_notices/reader.py", "src/mmis_connector/parser.py", "tools/mmis_development/query_fault_notice_analysis.py", "tests/test_read_fault_notice_analysis.py"],
+  "evidence": {"commands": ["python -m pytest -rs", "python -m compileall -q src tests tools/mmis_development", "python -m pip check", "git diff --check", "security and dependency scans", "python -m tools.mmis_development.query_fault_notice_analysis 1150828-12"], "findings": ["153 passed, 4 unrelated optional recording tests skipped", "Live read-only query returned all five fields matching the recorded case", "Dynamic table, tab, and textarea controls resolved from semantic metadata", "No browser dependency, file output, sensitive evidence, mutation, or production-to-tools import", "Architecture, security, test, and code review gates approved"], "residual": "Depends on MMIS visible labels and Maximo table/event/label-for structure; fails closed if these drift."},
+  "comments": [{"name": "專案使用者", "time": "2026-09-30", "text": "明確要求參考錄製檔開發 HTTP-only 故障分析查詢。"}, {"name": "Codex", "time": "2026-09-30", "text": "完成離線、錄製 DOM、完整回歸與唯讀 live 驗證；五欄完整輸出。"}]
+}

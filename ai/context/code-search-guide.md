@@ -10,7 +10,7 @@
 | Development tools | `tools/mmis_development/` | `execute`, `main`, `USAGE` |
 | 登入與網路邊界 | `src/mmis_connector/auth.py` | `MMISSession`, `MMISConfig`, `PageState` |
 | Maximo event | `src/mmis_connector/events.py` | `MaximoEventClient`, `load_app`, `post`, `post_events` |
-| 故障通報 domain | `src/mmis_connector/fault_notices/` | `UnprocessedFaultNoticeQuery`, `UnclosedFaultNoticeQuery`, `run` |
+| 故障通報 domain | `src/mmis_connector/fault_notices/` | `UnprocessedFaultNoticeQuery`, `UnclosedFaultNoticeQuery`, `FaultNoticeAnalysisReader`, `run` |
 | 日檢工單 domain | `src/mmis_connector/daily_inspection/` | `Query`, `Reader`, `Linker` |
 | Auto-link application | `src/mmis_connector/auto_link/` | `orchestrator`, `store`, `AutoLink` |
 | 表格解析 | `src/mmis_connector/parser.py` | `parse_maximo_table`, `parse_*_page_info` |
@@ -30,6 +30,7 @@
 | `DailyInspectionWorkOrderFaultNoticeLinker` | 對唯一 1A 工單勾稽指定故障通報、驗證結果並返回清單 | `src/mmis_connector/daily_inspection/linker.py` |
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/fault_notices/query.py` |
 | `UnclosedFaultNoticeQuery` | 以固定新竹機務段、A/B 級條件查詢未結案故障通報 | `src/mmis_connector/fault_notices/query.py` |
+| `FaultNoticeAnalysisReader` | 依通報號唯一篩選並讀取故障分析五欄 | `src/mmis_connector/fault_notices/reader.py` |
 | `normalize_auto_link_vehicle` | 將未處理通報單車碼轉為自動勾稽使用的數字查詢值；900 型四位碼去除末位車廂碼 | `src/mmis_connector/auto_link/orchestrator.py` |
 
 ## 給 Agent 的備註

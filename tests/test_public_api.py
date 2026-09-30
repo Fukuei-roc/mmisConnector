@@ -4,6 +4,7 @@ from mmis_connector import (
     DailyInspectionWorkOrderDetailReader,
     DailyInspectionWorkOrderFaultNoticeLinker,
     DailyInspectionWorkOrderQuery,
+    FaultNoticeAnalysisReader,
     MMISClientError,
     MMISConfig,
     MMISSession,
@@ -20,6 +21,7 @@ def test_package_public_api_is_preserved() -> None:
         "DailyInspectionWorkOrderDetailReader",
         "DailyInspectionWorkOrderFaultNoticeLinker",
         "DailyInspectionWorkOrderQuery",
+        "FaultNoticeAnalysisReader",
         "MMISClientError",
         "MMISConfig",
         "MMISSession",
@@ -45,6 +47,10 @@ def test_unprocessed_fault_notice_query_is_public() -> None:
 
 def test_unclosed_fault_notice_query_is_public() -> None:
     assert UnclosedFaultNoticeQuery.__name__ == "UnclosedFaultNoticeQuery"
+
+
+def test_fault_notice_analysis_reader_is_public() -> None:
+    assert FaultNoticeAnalysisReader.__name__ == "FaultNoticeAnalysisReader"
 
 
 def test_daily_inspection_work_order_query_is_public() -> None:

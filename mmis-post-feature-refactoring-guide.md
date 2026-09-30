@@ -39,7 +39,7 @@ Development / Diagnostic Tools → 留在 tools/mmis_development/
 開發階段允許使用很長、描述完整操作的檔名，例如：
 
 ```text
-tools/mmis_development/query_daily_inspection_work_order_by_number_and_link_fault_notice.py
+tools\mmis_development\query_daily_inspection_work_order_by_number_and_link_fault_notice.py
 ```
 
 這是刻意的。Development Tool 的檔名應優先描述「它可以執行什麼操作」，方便人工測試、除錯、Live 驗證及 Codex 搜尋。

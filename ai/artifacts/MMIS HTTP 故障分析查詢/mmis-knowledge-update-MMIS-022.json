@@ -1,0 +1,33 @@
+{
+  "section": "apiPatterns",
+  "id": "maximo-detail-tab-labeled-textarea-extraction",
+  "entry": {
+    "title": "Resolve Maximo detail tabs and textarea values by semantic relationships",
+    "description": "A Maximo detail subtab can be opened through the unique tab whose anchor title matches the visible label, and its form values can be extracted by matching each label's for attribute to a textarea id instead of copying dynamic component ids.",
+    "applicable_when": [
+      "Reading fields from a Maximo detail subtab without a browser",
+      "The target form uses label/for relationships and dynamic component ids"
+    ],
+    "advantages": [
+      "Survives changes to recorded dynamic m-prefixed ids",
+      "Extracts readonly and editable textareas through one rule",
+      "Preserves empty and multiline values"
+    ],
+    "disadvantages": [
+      "Depends on stable visible tab and field labels",
+      "Must fail closed when a semantic target is missing or duplicated"
+    ],
+    "recommended_when": [
+      "HAR evidence confirms a tab click event returns the required detail form"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Resolve the tab target from the ctype=tab ancestor of the unique anchor title.",
+      "Strip trailing ASCII or full-width colons from label text before exact matching.",
+      "Treat readonly state as metadata, not as a value-extraction distinction; an empty textarea is a valid empty string.",
+      "Validated offline against the 2026-09-30 fault-analysis recording and with a live HTTP-only read."
+    ],
+    "replaces": []
+  }
+}

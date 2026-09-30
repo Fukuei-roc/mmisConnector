@@ -6,6 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 from tools.mmis_development import (
+    query_fault_notice_analysis as analysis_tool,
+)
+from tools.mmis_development import (
     query_daily_inspection_work_order_by_number as detail_tool,
 )
 from tools.mmis_development import (
@@ -27,6 +30,7 @@ from tools.mmis_development import (
     [
         (unprocessed_tool, ["unexpected"]),
         (unclosed_tool, ["unexpected"]),
+        (analysis_tool, []),
         (work_order_tool, ["703"]),
         (detail_tool, []),
         (link_tool, ["115-1A-71002"]),
@@ -103,6 +107,31 @@ def test_unclosed_tool_invokes_formal_query(monkeypatch, capsys) -> None:
     monkeypatch.setattr(unclosed_tool, "UnclosedFaultNoticeQuery", FakeQuery)
 
     assert unclosed_tool.main([]) == 0
+    assert client.login_calls == 1
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_analysis_tool_forwards_fault_notice(monkeypatch, capsys) -> None:
+    client = _patch_client(analysis_tool, monkeypatch)
+    expected = {
+        "success": True,
+        "fault_notice": "1150828-12",
+        "analysis": {},
+    }
+    received = []
+
+    class FakeReader:
+        def __init__(self, actual_client):
+            assert actual_client is client
+
+        def run(self, fault_notice):
+            received.append(fault_notice)
+            return expected
+
+    monkeypatch.setattr(analysis_tool, "FaultNoticeAnalysisReader", FakeReader)
+
+    assert analysis_tool.main(["1150828-12"]) == 0
+    assert received == ["1150828-12"]
     assert client.login_calls == 1
     assert json.loads(capsys.readouterr().out) == expected
 

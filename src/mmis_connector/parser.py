@@ -214,6 +214,44 @@ def parse_maximo_page_info(
     raise MMISClientError(f"查詢回應找不到{context_name}總筆數")
 
 
+def parse_maximo_tab_target(response_text: str, *, title: str) -> str:
+    """Resolve one Maximo tab target by its visible title."""
+    _, soup = _parse_maximo_markup(response_text)
+    targets: set[str] = set()
+    for anchor in soup.find_all(attrs={"title": title}):
+        tab = anchor.find_parent(attrs={"ctype": "tab", "id": True})
+        if tab is not None:
+            targets.add(str(tab["id"]))
+    if len(targets) != 1:
+        raise MMISClientError(f"MMIS 回應找不到唯一的「{title}」頁籤")
+    return next(iter(targets))
+
+
+def parse_labeled_textareas(
+    response_text: str, *, field_names: tuple[str, ...]
+) -> dict[str, str]:
+    """Extract textarea values through stable label/for relationships."""
+    _, soup = _parse_maximo_markup(response_text)
+    result: dict[str, str] = {}
+    for field_name in field_names:
+        targets: set[str] = set()
+        for label in soup.find_all("label", attrs={"for": True}):
+            label_text = label.get_text(" ", strip=True).rstrip(":：").strip()
+            if label_text != field_name:
+                continue
+            target = str(label["for"])
+            if soup.find("textarea", id=target) is not None:
+                targets.add(target)
+        if len(targets) != 1:
+            raise MMISClientError(
+                f"故障分析回應找不到唯一的「{field_name}」欄位"
+            )
+        textarea = soup.find("textarea", id=next(iter(targets)))
+        assert textarea is not None
+        result[field_name] = textarea.get_text()
+    return result
+
+
 def parse_fault_notice_link_controls(
     response_text: str,
 ) -> FaultNoticeLinkControls:

@@ -4,7 +4,7 @@
 
 ## 系統總覽
 
-`auth.MMISSession` 負責登入與 page state；`events.MaximoEventClient` 重用同一 Session 送出單一或批次 Maximo event 與切換 app；各功能模組編排查詢或已授權寫入；`parser` 將回應 HTML 轉成 JSON-safe records 或動態控制項；`cli` 只負責參數、設定載入、錯誤封裝與 stdout JSON。
+`auth.MMISSession` 負責登入與 page state；`events.MaximoEventClient` 重用同一 Session 送出單一或批次 Maximo event 與切換 app；各功能模組編排查詢或已授權寫入；`parser` 將回應 HTML 轉成 JSON-safe records 或以表頭、tab title、label/for 關聯定位動態控制項；`cli` 只負責參數、設定載入、錯誤封裝與 stdout JSON。
 
 ## 邊界
 
