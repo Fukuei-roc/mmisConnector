@@ -53,7 +53,7 @@ class DailyInspectionWorkOrderFaultNoticeLinker:
         controls = parse_fault_notice_link_controls(detail_response)
 
         try:
-            link_response = self.events.post_events(
+            self.events.post_events(
                 state=self._current_state(),
                 current_focus=controls.button_target,
                 events=[
@@ -68,8 +68,13 @@ class DailyInspectionWorkOrderFaultNoticeLinker:
             ) from exc
 
         try:
+            confirmed_work_order, confirmation_response = self.detail_reader.open_detail(
+                normalized_work_order
+            )
+            if confirmed_work_order != normalized_work_order:
+                raise MMISClientError("勾稽後重新查詢的工作單不相符")
             _, fault_notices = parse_maximo_table(
-                link_response,
+                confirmation_response,
                 required_headers=FAULT_HEADERS,
                 table_summary=FAULT_TABLE_SUMMARY,
                 normalize_line_breaks=True,
@@ -83,11 +88,14 @@ class DailyInspectionWorkOrderFaultNoticeLinker:
             raise MMISClientError("勾稽後無法確認指定故障通報")
 
         try:
+            confirmed_controls = parse_fault_notice_link_controls(
+                confirmation_response
+            )
             list_response = self.events.post(
                 state=self._current_state(),
-                current_focus=controls.list_target,
+                current_focus=confirmed_controls.list_target,
                 event_type="click",
-                target_id=controls.list_target,
+                target_id=confirmed_controls.list_target,
                 value="",
                 xhr_seq=7,
             )

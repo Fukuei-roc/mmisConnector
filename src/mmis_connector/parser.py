@@ -74,6 +74,12 @@ def _cell_value(
     if value_node is None:
         value_node = cell.find("span", title=True)
     if value_node is None:
+        input_node = cell.find(
+            "input", id=re.compile(r"_txt-tb\[R:\d+\]$")
+        )
+        if input_node is not None:
+            return str(input_node.get("value", "")).strip()
+    if value_node is None:
         separator = "\n" if normalize_line_breaks else " "
         return cell.get_text(separator, strip=True)
     title = value_node.get("title")

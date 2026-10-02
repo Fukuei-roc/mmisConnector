@@ -32,6 +32,11 @@ RECORDING_DOM = Path(
 )
 RECORDED_LINKED_DETAIL = RECORDING_DOM / "2026-09-24T062105-558.html"
 RECORDED_RETURNED_LIST = RECORDING_DOM / "2026-09-24T062118-355.html"
+CONFIRMATION_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-02_confirm-specified-fault-notice-after-linking"
+    r"\dom\2026-10-02T020740-136.html"
+)
 
 
 def _detail_controls(*, duplicate_button: bool = False) -> str:
@@ -80,6 +85,13 @@ def _fault_table(fault_notice: str) -> str:
     )
 
 
+def _fault_table_with_input(fault_notice: str) -> str:
+    return _fault_table(fault_notice).replace(
+        f'<span title="{fault_notice}">{fault_notice}</span>',
+        f'<input id="fault_tdrow_[C:0]_txt-tb[R:0]" value="{fault_notice}" readonly>',
+    )
+
+
 def _daily_list() -> str:
     headers = {
         1: "檢修段",
@@ -100,7 +112,10 @@ def _linker(monkeypatch: pytest.MonkeyPatch) -> DailyInspectionWorkOrderFaultNot
     monkeypatch.setattr(
         linker.detail_reader,
         "open_detail",
-        lambda work_order: (work_order.strip(), _detail_controls()),
+        lambda work_order: (
+            work_order.strip(),
+            _detail_controls() + _fault_table("1150923-36"),
+        ),
     )
     return linker
 
@@ -146,10 +161,17 @@ def test_run_links_with_one_multi_event_post_and_returns_to_list(
     linker = _linker(monkeypatch)
     multi_calls: list[dict[str, Any]] = []
     single_calls: list[dict[str, Any]] = []
+    opened: list[str] = []
+
+    def open_detail(work_order: str) -> tuple[str, str]:
+        opened.append(work_order)
+        return work_order.strip(), _detail_controls() + _fault_table("1150923-36")
+
+    monkeypatch.setattr(linker.detail_reader, "open_detail", open_detail)
 
     def post_events(**kwargs: Any) -> str:
         multi_calls.append(kwargs)
-        return _fault_table("1150923-36")
+        return "<server_response/>"
 
     def post(**kwargs: Any) -> str:
         single_calls.append(kwargs)
@@ -165,6 +187,7 @@ def test_run_links_with_one_multi_event_post_and_returns_to_list(
         ("click", "link-button", ""),
     ]
     assert multi_calls[0]["xhr_seq"] == 6
+    assert opened == [" 115-1A-71002 ", "115-1A-71002"]
     assert single_calls[0]["target_id"] == "list-tab"
     assert single_calls[0]["xhr_seq"] == 7
     assert result == {
@@ -175,6 +198,15 @@ def test_run_links_with_one_multi_event_post_and_returns_to_list(
         "linked": True,
         "returned_to_list": True,
     }
+
+
+def test_input_value_in_fault_notice_cell_is_read() -> None:
+    _, rows = parse_maximo_table(
+        _fault_table_with_input("1150929-10"),
+        required_headers=FAULT_HEADERS,
+        table_summary=FAULT_TABLE_SUMMARY,
+    )
+    assert rows[0]["故障通報號"] == "1150929-10"
 
 
 def test_run_still_sends_link_when_notice_is_already_visible(
@@ -220,12 +252,38 @@ def test_run_rejects_unconfirmed_link_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     linker = _linker(monkeypatch)
+    reads = iter(
+        (
+            _detail_controls(),
+            _detail_controls() + _fault_table("1150923-99"),
+        )
+    )
+    monkeypatch.setattr(
+        linker.detail_reader,
+        "open_detail",
+        lambda work_order: (work_order, next(reads)),
+    )
     monkeypatch.setattr(
         linker.events,
         "post_events",
-        lambda **kwargs: _fault_table("1150923-99"),
+        lambda **kwargs: _fault_table("1150923-36"),
     )
 
+    with pytest.raises(MMISClientError, match="無法確認"):
+        linker.run("115-1A-71002", "1150923-36")
+
+
+def test_run_rejects_reopened_wrong_work_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    linker = _linker(monkeypatch)
+    reads = iter(("115-1A-71002", "115-1A-99999"))
+    monkeypatch.setattr(
+        linker.detail_reader,
+        "open_detail",
+        lambda work_order: (next(reads), _detail_controls() + _fault_table("1150923-36")),
+    )
+    monkeypatch.setattr(linker.events, "post_events", lambda **kwargs: "")
     with pytest.raises(MMISClientError, match="無法確認"):
         linker.run("115-1A-71002", "1150923-36")
 
@@ -270,3 +328,17 @@ def test_recorded_dom_contains_link_controls_confirmation_and_returned_list() ->
     assert controls.list_target
     assert any(row["故障通報號"] == "1150923-36" for row in fault_notices)
     assert REQUIRED_HEADERS.issubset(set(list_schema.headers.values()))
+
+
+@pytest.mark.skipif(
+    not CONFIRMATION_DOM.exists(),
+    reason="本機未提供 2026-10-02 確認流程錄製 DOM",
+)
+def test_recorded_confirmation_dom_reads_input_values() -> None:
+    _, rows = parse_maximo_table(
+        CONFIRMATION_DOM.read_text(encoding="utf-8"),
+        required_headers=FAULT_HEADERS,
+        table_summary=FAULT_TABLE_SUMMARY,
+        normalize_line_breaks=True,
+    )
+    assert [row["故障通報號"] for row in rows] == ["1150929-07", "1150929-10"]
