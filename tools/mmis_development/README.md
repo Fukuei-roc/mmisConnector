@@ -39,6 +39,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢未處理故障通報 | 驗證 saved query、table parsing 與 pagination | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 以固定新竹機務段、A/B 級條件驗證 saved query、filter 與完整分頁 JSON | `python -m tools.mmis_development.query_unclosed_fault_notices` |
 | 查詢故障通報的故障分析 | 依通報號讀取故障分析頁籤五個欄位 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
+| 查詢故障通報關聯的 ATP 故障分析 | 先確認 ATP故障 已勾選，再讀取故障要因、故障因子、故障項目 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` |
 | 查詢故障通報關聯的工單 | 依通報號讀取故障追蹤頁籤的所有段檢修工單，依工作單去重 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
 | 查詢故障通報關聯的查修工單 | 依通報號讀取故障追蹤頁籤的查修工單十欄，僅保留 CA 工單 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
 | 依車號與日期查詢日檢工單 | 驗證工單 filter 與日期條件 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` |

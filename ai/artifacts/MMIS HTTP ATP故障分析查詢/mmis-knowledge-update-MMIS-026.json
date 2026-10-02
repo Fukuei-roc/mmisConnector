@@ -1,0 +1,33 @@
+{
+  "section": "apiPatterns",
+  "id": "maximo-checkbox-gated-input-subtab-reading",
+  "entry": {
+    "title": "Check a Maximo detail checkbox before reading labeled input fields in a nested tab",
+    "description": "For ATP fault analysis, first inspect the detail response's uniquely labeled checkbox image and require consistent alt, checked attribute, and image source. Only when checked, click the main analysis tab and nested ATP tab using semantic titles, then read input value attributes through label/for relationships.",
+    "applicable_when": [
+      "A Maximo detail subtab is available only when a record-level checkbox is checked",
+      "A recorded detail form uses labeled input controls and dynamic ids"
+    ],
+    "advantages": [
+      "Prevents invalid tab requests for ineligible records",
+      "Preserves selected values and valid empty strings",
+      "Avoids hardcoded component ids"
+    ],
+    "disadvantages": [
+      "Depends on stable checkbox status labels and field labels",
+      "Requires explicit handling when checkbox markup is ambiguous"
+    ],
+    "recommended_when": [
+      "HAR and detail DOM confirm checkbox gate and sequential Maximo tab click events"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Match the checkbox by its semantic ATP故障 alt prefix, not the recorded m-prefixed id.",
+      "Distinguish cb_checked from cb_unchecked; substring matching on checked alone misclassifies unchecked images.",
+      "Resolve both tab ids from each preceding response, as the second tab may not be present in the initial detail response.",
+      "Validated with 2026-10-02 ATP recording and a live HTTP-only read of 1150210-36."
+    ],
+    "replaces": []
+  }
+}

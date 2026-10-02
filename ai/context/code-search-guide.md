@@ -31,6 +31,7 @@
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/fault_notices/query.py` |
 | `UnclosedFaultNoticeQuery` | 以固定新竹機務段、A/B 級條件查詢未結案故障通報 | `src/mmis_connector/fault_notices/query.py` |
 | `FaultNoticeAnalysisReader` | 依通報號唯一篩選並讀取故障分析五欄 | `src/mmis_connector/fault_notices/reader.py` |
+| `FaultNoticeATPAnalysisReader` | 依通報號確認 ATP 勾選後讀取三欄 | `src/mmis_connector/fault_notices/atp_reader.py` |
 | `normalize_auto_link_vehicle` | 將未處理通報單車碼轉為自動勾稽使用的數字查詢值；900 型四位碼去除末位車廂碼 | `src/mmis_connector/auto_link/orchestrator.py` |
 
 ## 給 Agent 的備註

@@ -247,6 +247,52 @@ def parse_maximo_tab_target(response_text: str, *, title: str) -> str:
     return next(iter(targets))
 
 
+def parse_atp_fault_checked(response_text: str) -> bool:
+    """Read the ATP故障 checkbox from a fault-notice detail response."""
+    _, soup = _parse_maximo_markup(response_text)
+    images = [
+        image for image in soup.find_all("img", alt=True)
+        if re.match(r"^ATP故障\s*[:：]", str(image["alt"]))
+    ]
+    if len(images) != 1:
+        raise MMISClientError("故障通報明細找不到唯一的 ATP故障 勾選欄位")
+    image = images[0]
+    checked = image.get("checked") == "checked"
+    source = str(image.get("src", "")).rsplit("/", 1)[-1]
+    status = str(image["alt"])
+    if checked and source.startswith("cb_checked") and "已勾選" in status:
+        return True
+    if not checked and (
+        source.startswith("cb_unchecked")
+        or "未勾選" in status
+        or "未選取" in status
+    ) and not source.startswith("cb_checked") and "已勾選" not in status:
+        return False
+    raise MMISClientError("ATP故障 勾選狀態不一致")
+
+
+def parse_labeled_inputs(
+    response_text: str, *, field_names: tuple[str, ...], context_name: str
+) -> dict[str, str]:
+    """Read input values by their visible labels, retaining empty values."""
+    _, soup = _parse_maximo_markup(response_text)
+    result: dict[str, str] = {}
+    for field_name in field_names:
+        controls = []
+        for label in soup.find_all("label", attrs={"for": True}):
+            if label.get_text(" ", strip=True).rstrip(":：").strip() != field_name:
+                continue
+            control = soup.find("input", id=str(label["for"]))
+            if control is not None:
+                controls.append(control)
+        if len(controls) != 1:
+            raise MMISClientError(
+                f"{context_name}回應找不到唯一的「{field_name}」欄位"
+            )
+        result[field_name] = str(controls[0].get("value", ""))
+    return result
+
+
 def parse_labeled_textareas(
     response_text: str, *, field_names: tuple[str, ...]
 ) -> dict[str, str]:
