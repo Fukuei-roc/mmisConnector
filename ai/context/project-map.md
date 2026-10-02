@@ -37,6 +37,7 @@
 | `python -m tools.mmis_development.query_unclosed_fault_notices` | Development tool：查詢新竹機務段 A/B 級未結案故障通報 | 零參數、只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` | Development tool：依通報號讀取故障分析五欄 | 唯讀、只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` | Development tool：依通報號讀取關聯段檢修工單 | 唯讀、跨頁並依工作單去重，只輸出 stdout JSON |
+| `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` | Development tool：依通報號讀取 CA 查修工單十欄 | 唯讀、跨頁並依工作單去重，只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | Development tool：依車號與日期查詢日檢工單 | 需先設定 `.env` |
 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | Development tool：依工作單號讀取故障通報 | 只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | Development tool：勾稽指定故障通報 | 會變更 MMIS；需受控執行 |

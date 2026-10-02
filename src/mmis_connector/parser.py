@@ -4,6 +4,7 @@ import html
 import re
 import warnings
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag, XMLParsedAsHTMLWarning
@@ -78,7 +79,19 @@ def _cell_value(
             "input", id=re.compile(r"_txt-tb\[R:\d+\]$")
         )
         if input_node is not None:
-            return str(input_node.get("value", "")).strip()
+            value = str(input_node.get("value", "")).strip()
+            if value:
+                return value
+            # Maximo leaves the HTML value empty for some rendered date inputs.
+            # The dojo timestamp represents midnight in the MMIS local zone.
+            if input_node.get("datatype") == "3" and input_node.get("dojovalue"):
+                try:
+                    timestamp = int(str(input_node["dojovalue"])) / 1000
+                    taipei = timezone(timedelta(hours=8))
+                    return datetime.fromtimestamp(timestamp, taipei).strftime("%Y/%m/%d")
+                except (ValueError, OverflowError, OSError):
+                    return ""
+            return value
     if value_node is None:
         separator = "\n" if normalize_line_breaks else " "
         return cell.get_text(separator, strip=True)

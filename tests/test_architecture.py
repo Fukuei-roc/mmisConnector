@@ -107,6 +107,7 @@ def test_every_production_module_is_classified() -> None:
         "events.py",
         "fault_notices/__init__.py",
         "fault_notices/linked_work_orders.py",
+        "fault_notices/repair_work_orders.py",
         "fault_notices/query.py",
         "fault_notices/reader.py",
         "parser.py",
@@ -152,7 +153,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         if path.name not in {"__init__.py", "_support.py"}
     ]
 
-    assert len(tool_paths) == 7
+    assert len(tool_paths) == 8
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {

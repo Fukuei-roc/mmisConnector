@@ -1,0 +1,27 @@
+{
+  "section": "apiPatterns",
+  "id": "maximo-empty-date-input-with-dojovalue",
+  "entry": {
+    "title": "Read rendered MMIS dates from dojovalue when input value is empty",
+    "description": "A Maximo date cell may have an empty HTML input value while dojovalue carries a Unix millisecond timestamp. For MMIS in Asia/Taipei, convert that timestamp to the local YYYY/MM/DD date before treating the field as empty.",
+    "applicable_when": [
+      "Parsing read-only Maximo table date cells with datatype 3 and an empty value"
+    ],
+    "advantages": [
+      "Matches the browser-rendered date without browser automation"
+    ],
+    "disadvantages": [
+      "Assumes the MMIS site timezone is Asia/Taipei"
+    ],
+    "recommended_when": [
+      "A recorded DOM or HTTP response shows a blank date value but a populated dojovalue"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Confirmed against the 2026-10-02 repair-work-order DOM, screenshot and live HTTP query: dojovalue 1790697600000 renders as 2026/09/30.",
+      "Prefer an explicit nonempty input value when present; preserve a truly empty value as empty."
+    ],
+    "replaces": []
+  }
+}
