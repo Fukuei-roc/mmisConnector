@@ -190,9 +190,6 @@ def parse_maximo_page_info(
     context_name: str,
 ) -> FaultNoticePageInfo:
     decoded, soup = _parse_maximo_markup(response_text)
-    if "沒有要顯示的列" in decoded:
-        return FaultNoticePageInfo(0, 0, 0, None)
-
     for node in soup.select(".tCount"):
         count_match = PAGE_COUNT_RE.fullmatch(node.get_text(" ", strip=True))
         id_match = COUNT_ID_RE.match(str(node.get("id", "")))
@@ -203,6 +200,8 @@ def parse_maximo_page_info(
         start = int(count_match.group("start"))
         end = int(count_match.group("end"))
         total = int(count_match.group("total"))
+        if (start, end, total) == (0, 0, 0):
+            return FaultNoticePageInfo(0, 0, 0, None)
         if start < 1 or end < start or total < end:
             raise MMISClientError(f"{context_name}分頁範圍無效")
 
@@ -217,6 +216,8 @@ def parse_maximo_page_info(
                 next_page_target = str(anchor["id"])
                 break
         return FaultNoticePageInfo(start, end, total, next_page_target)
+    if "沒有要顯示的列" in decoded:
+        return FaultNoticePageInfo(0, 0, 0, None)
     raise MMISClientError(f"查詢回應找不到{context_name}總筆數")
 
 

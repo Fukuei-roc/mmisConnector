@@ -1,0 +1,16 @@
+{
+  "section": "commonErrors",
+  "id": "maximo-page-count-must-match-target-table",
+  "entry": {
+    "title": "Scope Maximo empty-state and page count to the target table",
+    "description": "A detail view can contain several tables; an empty-state message from an unrelated table must not make a populated target table appear empty. Match the tCount id to the parsed target table prefix before deciding its page range.",
+    "applicable_when": ["Parsing a Maximo detail view with multiple tables"],
+    "advantages": ["Prevents false empty results", "Supports complete pagination of the intended table"],
+    "disadvantages": ["Requires the target table prefix and count id convention"],
+    "recommended_when": ["Reading related records from a Maximo detail subtab over HTTP"],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": ["Observed in the 2026-10-02 fault-notice linked work-order recording and validated with a live HTTP-only query.", "Deduplicate linked work orders by business key after collecting all pages; retain first occurrence order."],
+    "replaces": []
+  }
+}

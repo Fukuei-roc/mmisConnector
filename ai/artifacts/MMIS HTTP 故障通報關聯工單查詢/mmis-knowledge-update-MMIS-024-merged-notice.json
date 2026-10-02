@@ -1,0 +1,16 @@
+{
+  "section": "commonErrors",
+  "id": "maximo-linked-work-order-notice-can-differ-for-merged-notices",
+  "entry": {
+    "title": "Related work-order notice may differ from the searched notice after merging",
+    "description": "A fault notice detail view can show linked work-order rows whose notice column contains the merged primary notice number. Validate the searched notice in the filtered detail record, then preserve each related row's notice value instead of requiring equality.",
+    "applicable_when": ["Reading related work orders from a fault notice with merged-notice status"],
+    "advantages": ["Prevents valid merged-notice rows from being rejected", "Preserves the MMIS table's actual notice value"],
+    "disadvantages": ["The query notice and row notice may differ, so consumers must interpret both fields"],
+    "recommended_when": ["Building HTTP readers for MMIS related-record tables"],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": ["Confirmed by live HTTP read of fault notice 1150917-41 on 2026-10-02; its two related work orders display notice 1150915-58 and status 併單.", "Keep the work-order business key mandatory and deduplicate by that key."],
+    "replaces": []
+  }
+}

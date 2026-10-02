@@ -70,6 +70,29 @@ class FaultNoticeAnalysisReader:
 
     def run(self, fault_notice: str) -> dict[str, Any]:
         normalized_notice = normalize_fault_notice(fault_notice)
+        state, detail_response = self._load_exact_detail(normalized_notice)
+        analysis_tab = parse_maximo_tab_target(
+            detail_response, title="故障分析"
+        )
+        analysis_response = self._post_event(
+            state=self.client.state or state,
+            current_focus=analysis_tab,
+            event_type="click",
+            target_id=analysis_tab,
+            value="",
+            xhr_seq=3,
+        )
+        analysis = parse_labeled_textareas(
+            analysis_response, field_names=ANALYSIS_FIELDS
+        )
+        return {
+            "success": True,
+            "query_name": QUERY_NAME,
+            "fault_notice": normalized_notice,
+            "analysis": analysis,
+        }
+
+    def _load_exact_detail(self, normalized_notice: str) -> tuple[PageState, str]:
         state, list_response = self._load_list()
         list_schema = parse_maximo_table_schema(
             list_response, required_headers=REQUIRED_HEADERS
@@ -130,23 +153,4 @@ class FaultNoticeAnalysisReader:
             value="",
             xhr_seq=2,
         )
-        analysis_tab = parse_maximo_tab_target(
-            detail_response, title="故障分析"
-        )
-        analysis_response = self._post_event(
-            state=self.client.state or state,
-            current_focus=analysis_tab,
-            event_type="click",
-            target_id=analysis_tab,
-            value="",
-            xhr_seq=3,
-        )
-        analysis = parse_labeled_textareas(
-            analysis_response, field_names=ANALYSIS_FIELDS
-        )
-        return {
-            "success": True,
-            "query_name": QUERY_NAME,
-            "fault_notice": normalized_notice,
-            "analysis": analysis,
-        }
+        return state, detail_response
