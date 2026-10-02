@@ -1,0 +1,29 @@
+{
+  "section": "apiPatterns",
+  "id": "maximo-basic-detail-labels-and-visible-date",
+  "entry": {
+    "title": "Read basic Maximo detail fields through labels and visible date attributes",
+    "description": "In a fault-notice detail response, resolve each basic input through its label/for relationship rather than a recorded dynamic id. A date input may have an empty value while title contains the displayed date; use title before converting dojovalue in the MMIS local timezone. Duplicate labels can appear in the same response and must agree before one value is returned.",
+    "applicable_when": [
+      "Reading readonly fields from a Maximo detail response",
+      "A detail form repeats labels in more than one section"
+    ],
+    "advantages": [
+      "Avoids dynamic component ids and extra navigation requests",
+      "Preserves the date the user sees in the browser"
+    ],
+    "disadvantages": [
+      "Conflicting duplicate labels require a fail-closed error"
+    ],
+    "recommended_when": [
+      "A detail response already includes the target input controls"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Match label text after stripping trailing ASCII or full-width colons.",
+      "Confirm the detail notice number matches the requested business key.",
+      "Validated against the 2026-10-02 basic-information recording and a live HTTP-only read of 1150910-14."
+    ]
+  }
+}

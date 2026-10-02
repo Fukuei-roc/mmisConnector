@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..auth import MMISClientError
+from ..auth import MMISClientError, PageState
 from ..parser import parse_maximo_page_info, parse_maximo_tab_target, parse_maximo_table
 from .reader import FaultNoticeAnalysisReader, normalize_fault_notice
 
@@ -29,11 +29,23 @@ class LinkedWorkOrdersReader(FaultNoticeAnalysisReader):
             xhr_seq=3,
         )
 
+        records, _ = self.read_records(response, state=state, xhr_seq=4)
+        return {
+            "success": True,
+            "query_name": "查詢故障通報關聯的工單",
+            "fault_notice": notice,
+            "count": len(records),
+            "records": records,
+        }
+
+    def read_records(
+        self, response: str, *, state: PageState, xhr_seq: int
+    ) -> tuple[list[dict[str, str]], int]:
+        """Read all pages from an already opened tracking tab."""
         records: list[dict[str, str]] = []
         seen: set[str] = set()
         expected_start = 1
         expected_total: int | None = None
-        xhr_seq = 4
         while True:
             schema, rows = parse_maximo_table(
                 response,
@@ -80,10 +92,4 @@ class LinkedWorkOrdersReader(FaultNoticeAnalysisReader):
             )
             xhr_seq += 1
 
-        return {
-            "success": True,
-            "query_name": "查詢故障通報關聯的工單",
-            "fault_notice": notice,
-            "count": len(records),
-            "records": records,
-        }
+        return records, xhr_seq

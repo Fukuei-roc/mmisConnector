@@ -21,6 +21,9 @@ PAGE_COUNT_RE = re.compile(
     r"^(?P<start>\d+)\s*-\s*(?P<end>\d+)\s*/\s*(?P<total>\d+)$"
 )
 COUNT_ID_RE = re.compile(r"^(?P<prefix>.+)-lb\d+$")
+BASIC_FAULT_NOTICE_FIELDS = (
+    "通報號", "事故等級", "狀態", "發生日期", "車次", "車組/車號"
+)
 
 
 @dataclass(frozen=True)
@@ -290,6 +293,41 @@ def parse_labeled_inputs(
                 f"{context_name}回應找不到唯一的「{field_name}」欄位"
             )
         result[field_name] = str(controls[0].get("value", ""))
+    return result
+
+
+def parse_fault_notice_basic_info(
+    response_text: str, *, expected_notice: str
+) -> dict[str, str]:
+    """Read the visible basic fields from one fault-notice detail response."""
+    _, soup = _parse_maximo_markup(response_text)
+    result: dict[str, str] = {}
+    for field_name in BASIC_FAULT_NOTICE_FIELDS:
+        values: list[str] = []
+        for label in soup.find_all("label", attrs={"for": True}):
+            if label.get_text(" ", strip=True).rstrip(":：").strip() != field_name:
+                continue
+            control = soup.find("input", id=str(label["for"]))
+            if control is None:
+                raise MMISClientError(f"故障通報基本資料找不到「{field_name}」輸入框")
+            value = str(control.get("value", "")).strip()
+            if field_name == "發生日期" and not value:
+                value = str(control.get("title", "")).strip()
+                if not value and control.get("dojovalue"):
+                    try:
+                        timestamp = int(str(control["dojovalue"])) / 1000
+                        taipei = timezone(timedelta(hours=8))
+                        value = datetime.fromtimestamp(timestamp, taipei).strftime(
+                            "%Y/%m/%d"
+                        )
+                    except (ValueError, OverflowError, OSError) as exc:
+                        raise MMISClientError("故障通報基本資料發生日期無效") from exc
+            values.append(value)
+        if not values or len(set(values)) != 1:
+            raise MMISClientError(f"故障通報基本資料「{field_name}」缺失或不一致")
+        result[field_name] = values[0]
+    if result["通報號"] != expected_notice:
+        raise MMISClientError("故障通報基本資料通報號與輸入不相符")
     return result
 
 

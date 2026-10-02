@@ -1,0 +1,28 @@
+{
+  "section": "stableWorkflows",
+  "id": "compose-fault-notice-detail-readers-in-one-session",
+  "entry": {
+    "title": "Compose related fault-notice readers from one exact detail response",
+    "description": "For a combined read-only fault-notice query, validate the notice once, inspect detail-level flags before navigation, and let existing table readers consume the same tracking-tab response while carrying the next xhr sequence across pagination and later tabs.",
+    "applicable_when": [
+      "Combining several MMIS fault-notice detail queries into one HTTP-only result"
+    ],
+    "advantages": [
+      "Avoids repeated login and exact-notice search",
+      "Reuses established pagination, filtering, and deduplication rules"
+    ],
+    "disadvantages": [
+      "Tab and pagination event sequence must remain coordinated across readers"
+    ],
+    "recommended_when": [
+      "Several read-only outputs come from the same fault-notice detail and tracking tab"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Keep separate JSON arrays when two tables expose different columns or overlap in work-order numbers.",
+      "Only open the ATP analysis subtab when the detail checkbox is explicitly checked; use null when it is not checked.",
+      "Validated by offline tests and live reads of ATP notice 1150210-36 and non-ATP notice 1150930-09 on 2026-10-02."
+    ]
+  }
+}

@@ -17,6 +17,9 @@
 | `fault_notices/query.py` | A：Auto-link 必要／共用 Query | Orchestrator 直接以 `UnprocessedFaultNoticeQuery` 載入 source snapshot；development tool 使用 `UnclosedFaultNoticeQuery` | 保留；兩者共用 app、saved-query 與分頁協定 |
 | `fault_notices/reader.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `FaultNoticeAnalysisReader` | 保留；封裝可重用的唯一篩選、明細導航、semantic parsing 與驗證，wrapper 不得實作 domain logic |
 | `fault_notices/atp_reader.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `FaultNoticeATPAnalysisReader` | 保留；重用唯一通報明細查詢，再確認 ATP 勾選與讀取 ATP 故障分析 |
+| `fault_notices/full_detail.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `FaultNoticeFullDetailReader` | 保留；在同一明細與 session 中編排兩張工單表及條件式 ATP 分析 |
+| `fault_notices/linked_work_orders.py` | B：正式共用 Reader | Auto-link 不使用；獨立與整合查詢重用 | 保留；封裝段檢修工單分頁與去重 |
+| `fault_notices/repair_work_orders.py` | B：正式共用 Reader | Auto-link 不使用；獨立與整合查詢重用 | 保留；封裝 CA 查修工單分頁、篩選與去重 |
 | `daily_inspection/__init__.py` | B：domain package boundary | 標示 daily-inspection domain；不擴張 root public API | 保留 |
 | `daily_inspection/query.py` | A：Auto-link 必要 | Orchestrator 直接以 `DailyInspectionWorkOrderQuery` 搜尋後續工單；Reader 亦重用 `open_all_records` | 保留 |
 | `daily_inspection/reader.py` | A：Auto-link 間接必要 | Production Linker 建構 `DailyInspectionWorkOrderDetailReader`，呼叫 `open_detail()`，並重用 fault-table schema | 保留 |
