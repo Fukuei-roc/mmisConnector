@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from ..auth import MMISClientError, MMISSession
+from ..auth import MMISClientError, MMISSession, PageState
 from ..daily_inspection.reader import (
     FAULT_HEADERS,
     FAULT_TABLE_SUMMARY,
@@ -13,6 +13,7 @@ from ..daily_inspection.reader import (
 from ..events import MaximoEventClient
 from ..parser import (
     _parse_maximo_markup,
+    MaximoTableSchema,
     parse_maximo_page_info,
     parse_maximo_tab_target,
     parse_maximo_table,
@@ -22,6 +23,7 @@ from ..parser import (
 
 QUERY_NAME = "查詢臨時檢修工單的維修程序概況"
 LIST_HEADERS = {"工作單", "檢修級別", "車組/車號"}
+LIST_TABLE_SUMMARY = "工作單"
 NOTE_FIELDS = (
     "故障類別", "故障現象", "故障原因", "處置措施", "維修程序",
     "材料編號(PA)", "更換數量",
@@ -220,44 +222,22 @@ class TemporaryRepairProcedureReader:
         self.client = client
         self.events = MaximoEventClient(client)
 
-    def run(self, work_order: str) -> dict[str, Any]:
-        number = normalize_work_order(work_order)
-        state = self.events.load_app(
-            app_value="ZZ_CMWO",
-            favorite_focus="FavoriteApp_ZZ_CMWO",
-            expected_app_id="zz_cmwo",
-            display_name="臨時檢修工單",
+    def _filter_work_order(
+        self, *, state: PageState, response: str, number: str, xhr_seq: int
+    ) -> tuple[str, int, int]:
+        schema = parse_maximo_table_schema(
+            response, required_headers=LIST_HEADERS, table_summary=LIST_TABLE_SUMMARY
         )
-        menu = self.events.post(
-            state=state,
-            current_focus="toolbar2_tbs_0_tbcb_0_query-tb",
-            event_type="click",
-            target_id="toolbar2_tbs_0_tbcb_0_query-img",
-            value="",
-            xhr_seq=1,
-        )
-        if "mainrec_menus" not in menu:
-            raise MMISClientError("MMIS 未回傳臨時檢修工單查詢選單")
-        response = self.events.post(
-            state=self.client.state or state,
-            current_focus="menu0_useAllRecsQuery_OPTION_a",
-            event_type="click",
-            target_id="mainrec_menus",
-            value="useAllRecsQuery_OPTION",
-            xhr_seq=2,
-        )
-        schema = parse_maximo_table_schema(response, required_headers=LIST_HEADERS)
-        prefix = schema.prefix
         columns = {label: index for index, label in schema.headers.items()}
-        work_input = f"{prefix}_tfrow_[C:{columns['工作單']}]_txt-tb"
-        level_input = f"{prefix}_tfrow_[C:{columns['檢修級別']}]_txt-tb"
+        work_input = f"{schema.prefix}_tfrow_[C:{columns['工作單']}]_txt-tb"
+        level_input = f"{schema.prefix}_tfrow_[C:{columns['檢修級別']}]_txt-tb"
         self.events.post(
             state=self.client.state or state,
             current_focus=level_input,
             event_type="setvalue",
             target_id=work_input,
             value=number,
-            xhr_seq=3,
+            xhr_seq=xhr_seq,
         )
         self.events.post(
             state=self.client.state or state,
@@ -265,39 +245,94 @@ class TemporaryRepairProcedureReader:
             event_type="setvalue",
             target_id=level_input,
             value="C1,C2,C3",
-            xhr_seq=4,
+            xhr_seq=xhr_seq + 1,
         )
-        response = self.events.post(
+        filtered = self.events.post(
             state=self.client.state or state,
             current_focus=work_input,
             event_type="filterrows",
-            target_id=f"{prefix}_tbod_tfrow-tr",
+            target_id=f"{schema.prefix}_tbod_tfrow-tr",
             value="",
-            xhr_seq=5,
+            xhr_seq=xhr_seq + 2,
         )
-        result_schema, rows = parse_maximo_table(response, required_headers=LIST_HEADERS)
-        if not rows:
-            raise MMISClientError(f"找不到工作單：{number}")
-        if result_schema is None or len(rows) != 1 or rows[0]["工作單"] != number:
-            raise MMISClientError("工作單查詢結果不是唯一且完全相符的一筆")
+        return filtered, columns["工作單"], xhr_seq + 3
+
+    @staticmethod
+    def _exact_filtered_row(
+        response: str, *, number: str
+    ) -> tuple[MaximoTableSchema, dict[str, Any]] | None:
+        schema, rows = parse_maximo_table(
+            response, required_headers=LIST_HEADERS, table_summary=LIST_TABLE_SUMMARY
+        )
+        if schema is None:
+            raise MMISClientError("臨時檢修工單查詢結果缺少工作單表格")
         page = parse_maximo_page_info(
-            response, table_prefix=result_schema.prefix, context_name="臨時檢修工單"
+            response, table_prefix=schema.prefix, context_name="臨時檢修工單"
         )
-        if page.total != 1 or page.next_page_target is not None:
+        if page.total == 0:
+            if rows or page.start != 0 or page.end != 0 or page.next_page_target:
+                raise MMISClientError("臨時檢修工單零筆結果與表格資料不一致")
+            return None
+        if len(rows) != 1 or rows[0]["工作單"] != number:
+            raise MMISClientError("工作單查詢結果不是唯一且完全相符的一筆")
+        if page.total != 1 or page.start != 1 or page.end != 1 or page.next_page_target:
             raise MMISClientError("工作單查詢結果不是唯一一筆")
-        target = f"{result_schema.prefix}_tdrow_[C:{columns['工作單']}]_ttxt-lb[R:0]"
+        return schema, rows[0]
+
+    def run(self, work_order: str) -> dict[str, Any]:
+        number = normalize_work_order(work_order)
+        state, response = self.events.load_app_with_response(
+            app_value="ZZ_CMWO",
+            favorite_focus="FavoriteApp_ZZ_CMWO",
+            expected_app_id="zz_cmwo",
+            display_name="臨時檢修工單",
+        )
+        response, work_column, xhr_seq = self._filter_work_order(
+            state=state, response=response, number=number, xhr_seq=1
+        )
+        found = self._exact_filtered_row(response, number=number)
+        if found is None:
+            menu = self.events.post(
+                state=self.client.state or state,
+                current_focus="toolbar2_tbs_0_tbcb_0_query-tb",
+                event_type="click",
+                target_id="toolbar2_tbs_0_tbcb_0_query-img",
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+            if "mainrec_menus" not in menu:
+                raise MMISClientError("MMIS 未回傳臨時檢修工單查詢選單")
+            response = self.events.post(
+                state=self.client.state or state,
+                current_focus="menu0_useAllRecsQuery_OPTION_a",
+                event_type="click",
+                target_id="mainrec_menus",
+                value="useAllRecsQuery_OPTION",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+            response, work_column, xhr_seq = self._filter_work_order(
+                state=state, response=response, number=number, xhr_seq=xhr_seq
+            )
+            found = self._exact_filtered_row(response, number=number)
+            if found is None:
+                raise MMISClientError(f"找不到工作單：{number}")
+        result_schema, row = found
+        target = f"{result_schema.prefix}_tdrow_[C:{work_column}]_ttxt-lb[R:0]"
         detail = self.events.post(
             state=self.client.state or state,
             current_focus=target,
             event_type="click",
             target_id=target,
             value="",
-            xhr_seq=6,
+            xhr_seq=xhr_seq,
         )
+        xhr_seq += 1
         basic_info = parse_temporary_repair_basic_info(detail)
         linked_fault_notices = parse_temporary_repair_linked_fault_notices(detail)
         vehicle = basic_info["車組/車號"]
-        if vehicle != rows[0]["車組/車號"]:
+        if vehicle != row["車組/車號"]:
             raise MMISClientError("工單明細車組/車號與查詢結果不相符")
         tab = parse_maximo_tab_target(detail, title="檢修回報")
         response = self.events.post(
@@ -306,13 +341,13 @@ class TemporaryRepairProcedureReader:
             event_type="click",
             target_id=tab,
             value="",
-            xhr_seq=7,
+            xhr_seq=xhr_seq,
         )
+        xhr_seq += 1
         summary = _note_table_summary(response)
         records: list[dict[str, str]] = []
         expected_start = 1
         expected_total: int | None = None
-        xhr_seq = 8
         while True:
             note_schema, note_rows = parse_maximo_table(
                 response, required_headers=set(NOTE_FIELDS), table_summary=summary

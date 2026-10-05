@@ -38,7 +38,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 |---|---|---|
 | 查詢未處理故障通報 | 驗證 saved query、table parsing 與 pagination | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 以固定新竹機務段、A/B 級條件驗證 saved query、filter 與完整分頁 JSON | `python -m tools.mmis_development.query_unclosed_fault_notices` |
-| 查詢臨時檢修工單的維修程序概況 | 依工作單輸出最上層八個基本欄位與 `已勾稽故障通報`，並在 `維修程序概況` 中輸出紀事清單九欄；兩份清單各有 `count` 與 `records`，只印 JSON | `python -m tools.mmis_development.query_temporary_repair_work_order_maintenance_procedure_summary 115-C1-41264` |
+| 查詢臨時檢修工單的維修程序概況 | 先查預設清單，0 筆才切「所有記錄」重查；輸出最上層八個基本欄位與 `已勾稽故障通報`，並在 `維修程序概況` 中輸出紀事清單九欄；兩份清單各有 `count` 與 `records`，只印 JSON | `python -m tools.mmis_development.query_temporary_repair_work_order_maintenance_procedure_summary 115-C1-41264` |
 | 查詢故障通報完整資料（最完整） | 依通報號一次輸出六欄基本資料、ATP 標記、所有段檢修工單、CA 查修工單、故障分析五欄；勾選 ATP 時另輸出 ATP 分析三欄，未勾選時為 `null`。結果只印出 JSON | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
 | 查詢故障通報的故障分析 | 依通報號讀取故障分析頁籤五個欄位 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
 | 查詢故障通報關聯的 ATP 故障分析 | 先確認 ATP故障 已勾選，再讀取故障要因、故障因子、故障項目 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` |

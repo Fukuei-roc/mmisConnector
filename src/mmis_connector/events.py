@@ -100,6 +100,22 @@ class MaximoEventClient:
         expected_app_id: str,
         display_name: str,
     ) -> PageState:
+        state, _ = self.load_app_with_response(
+            app_value=app_value,
+            favorite_focus=favorite_focus,
+            expected_app_id=expected_app_id,
+            display_name=display_name,
+        )
+        return state
+
+    def load_app_with_response(
+        self,
+        *,
+        app_value: str,
+        favorite_focus: str,
+        expected_app_id: str,
+        display_name: str,
+    ) -> tuple[PageState, str]:
         if self.client.state is None:
             self.client.login()
         assert self.client.state is not None
@@ -124,7 +140,7 @@ class MaximoEventClient:
         if redirect_match is None:
             raise MMISClientError(f"切換{display_name}後找不到 redirect")
         redirect_url = urljoin(state.page_url, redirect_match.group("url"))
-        app_state, _ = self.client.refresh_state(redirect_url)
+        app_state, app_response = self.client.refresh_state(redirect_url)
         if app_state.app_id.lower() != expected_app_id.lower():
             raise MMISClientError(f"未成功進入{display_name}")
-        return app_state
+        return app_state, app_response

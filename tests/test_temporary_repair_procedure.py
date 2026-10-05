@@ -31,6 +31,136 @@ BASIC_RECORDING = Path(
     r"\raw.har"
 )
 BASIC_DOM = BASIC_RECORDING.parent / "dom" / "2026-10-05T060838-420.html"
+OPTIMIZATION_RECORDING = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-05_optimize-temporary-repair-work-order-query-speed"
+    r"\raw.har"
+)
+
+
+def _recorded_query_calls(
+    monkeypatch, *, number: str, response_indices: tuple[int, ...]
+) -> list[dict[str, Any]]:
+    entries = json.loads(OPTIMIZATION_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
+    reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
+    monkeypatch.setattr(
+        reader.events,
+        "load_app_with_response",
+        lambda **kwargs: (state, entries[252]["response"]["content"]["text"]),
+    )
+    responses = iter(
+        entries[index]["response"]["content"]["text"]
+        for index in response_indices
+    )
+    calls: list[dict[str, Any]] = []
+
+    def post(**kwargs: Any) -> str:
+        calls.append(kwargs)
+        if kwargs["target_id"].endswith("_ttxt-lb[R:0]"):
+            raise RuntimeError("detail clicked")
+        return next(responses)
+
+    monkeypatch.setattr(reader.events, "post", post)
+    with pytest.raises(RuntimeError, match="detail clicked"):
+        reader.run(number)
+    return calls
+
+
+def test_recorded_query_uses_default_list_before_all_records(monkeypatch) -> None:
+    if not OPTIMIZATION_RECORDING.exists():
+        pytest.skip("速度優化錄製 HAR 不在本機")
+    calls = _recorded_query_calls(
+        monkeypatch, number="115-C1-41264", response_indices=(340, 343, 344)
+    )
+
+    assert [(call["event_type"], call["value"]) for call in calls] == [
+        ("setvalue", "115-C1-41264"),
+        ("setvalue", "C1,C2,C3"),
+        ("filterrows", ""),
+        ("click", ""),
+    ]
+    assert [call["xhr_seq"] for call in calls] == [1, 2, 3, 4]
+
+
+def test_recorded_query_falls_back_to_all_records_only_after_zero(monkeypatch) -> None:
+    if not OPTIMIZATION_RECORDING.exists():
+        pytest.skip("速度優化錄製 HAR 不在本機")
+    calls = _recorded_query_calls(
+        monkeypatch,
+        number="115-C1-36682",
+        response_indices=(340, 343, 348, 353, 356, 362, 363, 364),
+    )
+
+    assert [(call["event_type"], call["value"]) for call in calls] == [
+        ("setvalue", "115-C1-36682"),
+        ("setvalue", "C1,C2,C3"),
+        ("filterrows", ""),
+        ("click", ""),
+        ("click", "useAllRecsQuery_OPTION"),
+        ("setvalue", "115-C1-36682"),
+        ("setvalue", "C1,C2,C3"),
+        ("filterrows", ""),
+        ("click", ""),
+    ]
+    assert [call["xhr_seq"] for call in calls] == list(range(1, 10))
+
+
+def test_recorded_query_reports_missing_only_after_all_records(monkeypatch) -> None:
+    if not OPTIMIZATION_RECORDING.exists():
+        pytest.skip("速度優化錄製 HAR 不在本機")
+    entries = json.loads(OPTIMIZATION_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
+    reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
+    monkeypatch.setattr(
+        reader.events,
+        "load_app_with_response",
+        lambda **kwargs: (state, entries[252]["response"]["content"]["text"]),
+    )
+    responses = iter(
+        entries[index]["response"]["content"]["text"]
+        for index in (340, 343, 348, 353, 356, 362, 363, 348)
+    )
+    calls = []
+
+    def post(**kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr(reader.events, "post", post)
+    with pytest.raises(MMISClientError, match="找不到工作單：115-C1-36682"):
+        reader.run("115-C1-36682")
+    assert len(calls) == 8
+
+
+def test_inconsistent_first_query_does_not_switch_to_all_records(monkeypatch) -> None:
+    if not OPTIMIZATION_RECORDING.exists():
+        pytest.skip("速度優化錄製 HAR 不在本機")
+    entries = json.loads(OPTIMIZATION_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    _, soup = _parse_maximo_markup(entries[344]["response"]["content"]["text"])
+    count = soup.find(id="m6a7dfd2f-lb3")
+    assert count is not None
+    count.string = "1 - 1/2"
+    state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
+    reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
+    monkeypatch.setattr(
+        reader.events,
+        "load_app_with_response",
+        lambda **kwargs: (state, entries[252]["response"]["content"]["text"]),
+    )
+    responses = iter([
+        entries[index]["response"]["content"]["text"] for index in (340, 343)
+    ] + [str(soup)])
+    calls = []
+
+    def post(**kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr(reader.events, "post", post)
+    with pytest.raises(MMISClientError, match="不是唯一一筆"):
+        reader.run("115-C1-41264")
+    assert [call["event_type"] for call in calls] == ["setvalue", "setvalue", "filterrows"]
 
 
 def test_recorded_c1_detail_reads_linked_fault_notice() -> None:
@@ -110,7 +240,7 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
     if not RECORDING.exists():
         pytest.skip("錄製 HAR 不在本機")
     entries = json.loads(RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
-    responses = iter(entries[index]["response"]["content"]["text"] for index in (341, 345, 346, 348, 349, 353, 363))
+    responses = iter(entries[index]["response"]["content"]["text"] for index in (346, 348, 349, 353, 363))
     state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
     client = SimpleNamespace(state=state)
     reader = TemporaryRepairProcedureReader(client)
@@ -118,13 +248,13 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
 
     def load_app(**kwargs):
         assert kwargs["app_value"] == "ZZ_CMWO"
-        return state
+        return state, entries[345]["response"]["content"]["text"]
 
     def post(**kwargs):
         calls.append(kwargs)
         return next(responses)
 
-    monkeypatch.setattr(reader.events, "load_app", load_app)
+    monkeypatch.setattr(reader.events, "load_app_with_response", load_app)
     monkeypatch.setattr(reader.events, "post", post)
 
     result = reader.run(" 115-C2-41266 ")
@@ -147,7 +277,6 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
     assert summary["records"][1]["故障現象"] == "集電舟碳刷撞損"
     assert all(len(row) == 9 and "故障類別說明" in row for row in summary["records"])
     assert [(call["event_type"], call["value"]) for call in calls] == [
-        ("click", ""), ("click", "useAllRecsQuery_OPTION"),
         ("setvalue", "115-C2-41266"), ("setvalue", "C1,C2,C3"),
         ("filterrows", ""), ("click", ""), ("click", ""),
     ]
@@ -205,12 +334,12 @@ def test_empty_recorded_note_table_returns_empty_array(monkeypatch) -> None:
     assert count is not None
     count.string = "0 - 0/0"
     responses = iter(
-        [entries[index]["response"]["content"]["text"] for index in (341, 345, 346, 348, 349, 353)]
+        [entries[index]["response"]["content"]["text"] for index in (346, 348, 349, 353)]
         + [str(soup)]
     )
     state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
     reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
-    monkeypatch.setattr(reader.events, "load_app", lambda **kwargs: state)
+    monkeypatch.setattr(reader.events, "load_app_with_response", lambda **kwargs: (state, entries[345]["response"]["content"]["text"]))
     monkeypatch.setattr(reader.events, "post", lambda **kwargs: next(responses))
 
     result = reader.run("115-C2-41266")
@@ -233,13 +362,13 @@ def test_other_problem_on_unselected_row_opens_that_rows_detail(monkeypatch) -> 
         '<textarea id="extra-ta">第二列補充</textarea></component>'
     )
     responses = iter(
-        [entries[index]["response"]["content"]["text"] for index in (341, 345, 346, 348, 349, 353)]
+        [entries[index]["response"]["content"]["text"] for index in (346, 348, 349, 353)]
         + [str(soup), selected_detail]
     )
     state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
     reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
     calls = []
-    monkeypatch.setattr(reader.events, "load_app", lambda **kwargs: state)
+    monkeypatch.setattr(reader.events, "load_app_with_response", lambda **kwargs: (state, entries[345]["response"]["content"]["text"]))
 
     def post(**kwargs):
         calls.append(kwargs)
@@ -253,7 +382,7 @@ def test_other_problem_on_unselected_row_opens_that_rows_detail(monkeypatch) -> 
     assert records[0]["故障現象"] == "其它問題：Batk2不動作"
     assert records[1]["故障現象"] == "其它問題：第二列補充"
     assert calls[-1]["target_id"] == "me0c66d4a_tdrow_[C:0]_tgdet-ti[R:1]"
-    assert calls[-1]["xhr_seq"] == 8
+    assert calls[-1]["xhr_seq"] == 6
 
 
 def test_row_selection_without_textarea_update_reuses_rendered_value(monkeypatch) -> None:
@@ -269,12 +398,12 @@ def test_row_selection_without_textarea_update_reuses_rendered_value(monkeypatch
         "<script>row.setAttribute('currentrow', 'true');</script></component>"
     )
     responses = iter(
-        [entries[index]["response"]["content"]["text"] for index in (341, 345, 346, 348, 349, 353)]
+        [entries[index]["response"]["content"]["text"] for index in (346, 348, 349, 353)]
         + [str(soup), unchanged_detail]
     )
     state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
     reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
-    monkeypatch.setattr(reader.events, "load_app", lambda **kwargs: state)
+    monkeypatch.setattr(reader.events, "load_app_with_response", lambda **kwargs: (state, entries[345]["response"]["content"]["text"]))
     monkeypatch.setattr(reader.events, "post", lambda **kwargs: next(responses))
 
     result = reader.run("115-C2-41266")
@@ -304,12 +433,12 @@ def test_all_three_other_fields_use_the_same_selected_rows_textareas(monkeypatch
         '<textarea id="m73bff823-ta">其它處置措施測試</textarea></component>'
     )
     responses = iter(
-        [entries[index]["response"]["content"]["text"] for index in (341, 345, 346, 348, 349, 353)]
+        [entries[index]["response"]["content"]["text"] for index in (346, 348, 349, 353)]
         + [str(soup), selected_detail]
     )
     state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
     reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
-    monkeypatch.setattr(reader.events, "load_app", lambda **kwargs: state)
+    monkeypatch.setattr(reader.events, "load_app_with_response", lambda **kwargs: (state, entries[345]["response"]["content"]["text"]))
     monkeypatch.setattr(reader.events, "post", lambda **kwargs: next(responses))
 
     result = reader.run("115-C2-41266")
@@ -331,6 +460,6 @@ def test_tool_rejects_wrong_argument_count_without_loading_config(monkeypatch, c
 
 def test_invalid_work_order_fails_before_app_load(monkeypatch) -> None:
     reader = TemporaryRepairProcedureReader(SimpleNamespace(state=None))
-    monkeypatch.setattr(reader.events, "load_app", lambda **kwargs: pytest.fail("unexpected app load"))
+    monkeypatch.setattr(reader.events, "load_app_with_response", lambda **kwargs: pytest.fail("unexpected app load"))
     with pytest.raises(MMISClientError, match="工作單號"):
         reader.run("115/C2/41266")
