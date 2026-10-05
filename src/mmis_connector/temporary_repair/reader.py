@@ -5,7 +5,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession
-from ..daily_inspection.reader import normalize_work_order
+from ..daily_inspection.reader import (
+    FAULT_HEADERS,
+    FAULT_TABLE_SUMMARY,
+    normalize_work_order,
+)
 from ..events import MaximoEventClient
 from ..parser import (
     _parse_maximo_markup,
@@ -116,6 +120,30 @@ def parse_temporary_repair_basic_info(response: str) -> dict[str, str]:
             raise MMISClientError(f"臨時檢修工單基本資料{field}缺失或不一致")
         result[field] = values[0]
     return result
+
+
+def parse_temporary_repair_linked_fault_notices(
+    response: str,
+) -> dict[str, Any]:
+    """Read the same linked-notice table contract used by daily inspection."""
+    schema, records = parse_maximo_table(
+        response,
+        required_headers=FAULT_HEADERS,
+        table_summary=FAULT_TABLE_SUMMARY,
+        normalize_line_breaks=True,
+    )
+    if schema is None:
+        raise MMISClientError("臨時檢修工單找不到故障通報管理表格")
+    page = parse_maximo_page_info(
+        response, table_prefix=schema.prefix, context_name=FAULT_TABLE_SUMMARY
+    )
+    if (
+        page.total != len(records)
+        or page.next_page_target is not None
+        or (records and (page.start != 1 or page.end != len(records)))
+    ):
+        raise MMISClientError("故障通報管理結果超過單頁或分頁不一致，拒絕回傳不完整資料")
+    return {"count": len(records), "records": records}
 
 
 def _selected_note_row(response: str, *, table_prefix: str) -> int | None:
@@ -267,6 +295,7 @@ class TemporaryRepairProcedureReader:
             xhr_seq=6,
         )
         basic_info = parse_temporary_repair_basic_info(detail)
+        linked_fault_notices = parse_temporary_repair_linked_fault_notices(detail)
         vehicle = basic_info["車組/車號"]
         if vehicle != rows[0]["車組/車號"]:
             raise MMISClientError("工單明細車組/車號與查詢結果不相符")
@@ -375,6 +404,7 @@ class TemporaryRepairProcedureReader:
             "query_name": QUERY_NAME,
             "work_order": number,
             **basic_info,
+            "已勾稽故障通報": linked_fault_notices,
             "維修程序概況": {
                 "count": len(records),
                 "records": records,

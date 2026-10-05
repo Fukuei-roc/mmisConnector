@@ -13,6 +13,7 @@ from mmis_connector.temporary_repair.reader import (
     _note_record,
     _note_table_summary,
     parse_temporary_repair_basic_info,
+    parse_temporary_repair_linked_fault_notices,
 )
 from tools.mmis_development import (
     query_temporary_repair_work_order_maintenance_procedure_summary as tool,
@@ -30,6 +31,37 @@ BASIC_RECORDING = Path(
     r"\raw.har"
 )
 BASIC_DOM = BASIC_RECORDING.parent / "dom" / "2026-10-05T060838-420.html"
+
+
+def test_recorded_c1_detail_reads_linked_fault_notice() -> None:
+    if not BASIC_RECORDING.exists():
+        pytest.skip("基本資料錄製 HAR 不在本機")
+    entries = json.loads(BASIC_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    detail = entries[352]["response"]["content"]["text"]
+
+    assert parse_temporary_repair_linked_fault_notices(detail) == {
+        "count": 1,
+        "records": [{
+            "故障通報號": "1151005-29",
+            "發生日期": "2026/10/03",
+            "車組/車號": "EMA815",
+            "故障現象": "TCMS未接收BECU傳輸信號,2車 Ma815 BECU 故障",
+            "事故等級": "A",
+        }],
+    }
+
+
+def test_linked_fault_notice_rejects_incomplete_page() -> None:
+    if not BASIC_RECORDING.exists():
+        pytest.skip("基本資料錄製 HAR 不在本機")
+    entries = json.loads(BASIC_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    _, soup = _parse_maximo_markup(entries[352]["response"]["content"]["text"])
+    count = soup.find(id="m31d0c5ac-lb3")
+    assert count is not None
+    count.string = "1 - 1/2"
+
+    with pytest.raises(MMISClientError, match="拒絕回傳不完整資料"):
+        parse_temporary_repair_linked_fault_notices(str(soup))
 
 
 @pytest.mark.parametrize("source", ["har", "dom"])
@@ -101,6 +133,9 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
     assert result["work_order"] == "115-C2-41266"
     assert result["車組/車號"] == "ED813"
     assert result["檢修級別"] == "C2"
+    assert result["已勾稽故障通報"] == {"count": 0, "records": []}
+    assert list(result).index("工作單狀態") < list(result).index("已勾稽故障通報")
+    assert list(result).index("已勾稽故障通報") < list(result).index("維修程序概況")
     assert "count" not in result and "records" not in result
     summary = result["維修程序概況"]
     assert summary["count"] == 2
