@@ -1,0 +1,31 @@
+{
+  "section": "apiPatterns",
+  "id": "maximo-current-row-note-detail-textarea",
+  "entry": {
+    "title": "Read row-specific Maximo detail textarea after selecting its table row",
+    "description": "A Maximo table may show one selected row's detail pane outside the table body. For row-specific supplemental fields, resolve the target table prefix from headers, find its currentrow, click the row's C:0 tgdet-ti control if needed, and resolve all textarea ids through semantic label/for relationships in the full page. Partial row-selection responses may update a textarea without its label, or omit an unchanged textarea entirely. Apply updates by known control id and retain omitted rendered values after confirming row selection.",
+    "applicable_when": [
+      "A Maximo table row has a supplemental textarea in the selected-row detail pane",
+      "Reading multiple rows where each row may have different detail values"
+    ],
+    "advantages": [
+      "Avoids mixing the first row's detail with another row",
+      "Avoids hardcoded dynamic textarea ids"
+    ],
+    "disadvantages": [
+      "Requires an additional read-only selection event for nonselected rows"
+    ],
+    "recommended_when": [
+      "The target table has currentrow and a row-select tgdet-ti control"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "In ZZ_CMWO, the 故障現象 value 其它問題 has a separate 其它故障現象 textarea under the target table's tdet-chld detail pane.",
+      "Validated against the 2026-10-05 C2 HAR and live C1/C2 HTTP queries; selecting a noncurrent C2 row returned its own textarea in a partial Maximo event response.",
+      "Keep the original value when the supplemental textarea is empty; append a full-width colon and its text only when nonempty.",
+      "Live ZZ_CMWO work order 115-C2-38264 has four rows with blank 其它故障現象. Row selection responses confirm currentrow changes but omit unchanged textarea elements; retaining the blank rendered value returns all four rows.",
+      "Live ZZ_CMWO work order 115-C2-41266 now has three rows; the third uses 其它問題, 其它原因, and 其它, with separate textareas labeled 其它故障現象, 其它故障原因, and 其它處置措施. The selection response updated all three textarea values but omitted the first label."
+    ]
+  }
+}

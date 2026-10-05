@@ -24,6 +24,8 @@
 | `daily_inspection/query.py` | A：Auto-link 必要 | Orchestrator 直接以 `DailyInspectionWorkOrderQuery` 搜尋後續工單；Reader 亦重用 `open_all_records` | 保留 |
 | `daily_inspection/reader.py` | A：Auto-link 間接必要 | Production Linker 建構 `DailyInspectionWorkOrderDetailReader`，呼叫 `open_detail()`，並重用 fault-table schema | 保留 |
 | `daily_inspection/linker.py` | A：Auto-link 必要 | Orchestrator 直接以 `DailyInspectionWorkOrderFaultNoticeLinker` 執行 mutation 與 verification | 保留 |
+| `temporary_repair/__init__.py` | B：domain package boundary | Auto-link 不使用 | 保留；標示臨時檢修工單 domain |
+| `temporary_repair/reader.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `TemporaryRepairProcedureReader` | 保留；封裝唯讀查詢、唯一工單驗證與紀事清單分頁 |
 | `auto_link/__init__.py` | B：application package boundary | 標示 auto-link application；不擴張 root public API | 保留 |
 | `auto_link/orchestrator.py` | A：Production application | 正式 orchestrator 與 business rules | 保留 |
 | `auto_link/store.py` | A：Auto-link 必要 | Orchestrator 直接使用 SQLite batch state | 保留 |

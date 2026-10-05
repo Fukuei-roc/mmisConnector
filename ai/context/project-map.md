@@ -42,6 +42,7 @@
 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150210-36` | Development tool：整合基本資料、ATP 標記、段修與 CA 工單、故障分析 | 唯讀；六個基本欄位置於 JSON 第一層最前面，非 ATP 時分析為 null |
 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | Development tool：依車號與日期查詢日檢工單 | 需先設定 `.env` |
 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | Development tool：依工作單號讀取故障通報 | 只輸出 stdout JSON |
+| `python -m tools.mmis_development.query_temporary_repair_work_order_maintenance_procedure_summary 115-C2-41266` | Development tool：依工作單讀取臨時檢修工單維修程序概況 | 唯讀、只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | Development tool：勾稽指定故障通報 | 會變更 MMIS；需受控執行 |
 | `python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders` | 批次將未處理通報勾稽至最早的後續日檢工單 | 會變更 MMIS 資料；以 SQLite 續跑，`link_error` 不自動重送 |
 | `python -m pytest` | 執行測試 | 不連線 MMIS 的測試為預設 |

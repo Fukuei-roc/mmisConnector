@@ -1,0 +1,30 @@
+{
+  "section": "commonErrors",
+  "id": "maximo-page-count-must-match-target-table",
+  "entry": {
+    "title": "Scope Maximo empty-state, page count, and duplicate table names to the target table",
+    "description": "A Maximo detail view can contain unrelated empty tables and multiple tables with the same visible name. Select the target by stable distinguishing headers, then use its table prefix to read rows and page count. Related work orders may use alternate column names or include row-level vehicle values; normalize these only after selecting the target table.",
+    "applicable_when": [
+      "Parsing a Maximo detail view with multiple tables",
+      "Two Maximo tables share the same visible name but have different columns"
+    ],
+    "advantages": [
+      "Prevents false empty results",
+      "Prevents reading the wrong same-name table",
+      "Supports complete pagination of the intended table"
+    ],
+    "disadvantages": [
+      "Requires stable distinguishing headers and the target table prefix"
+    ],
+    "recommended_when": [
+      "Reading related records from a Maximo detail subtab over HTTP"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "The 2026-10-05 ZZ_CMWO repair-report response contains two 紀事(備註)清單 tables: one has 更換數量 and the other has 數量. Select the former for replacement quantity.",
+      "Validated by offline HAR parsing and live HTTP query of work order 115-C2-41266.",
+      "Live ZZ_CMWO C1 work order 115-C1-41264 uses 故障類別說明 and a per-row 車組/車號; C2 115-C2-41266 uses 故障類型說明 and vehicle from the detail form. Both output the same nine-field JSON contract."
+    ]
+  }
+}
