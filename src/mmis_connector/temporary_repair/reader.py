@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession
@@ -8,7 +9,6 @@ from ..daily_inspection.reader import normalize_work_order
 from ..events import MaximoEventClient
 from ..parser import (
     _parse_maximo_markup,
-    parse_labeled_inputs,
     parse_maximo_page_info,
     parse_maximo_tab_target,
     parse_maximo_table,
@@ -37,6 +37,11 @@ SUPPLEMENT_FIELDS = {
         {"其它處置措施", "其他處置措施"},
     ),
 }
+BASIC_FIELDS = (
+    "車組/車號", "檢修級別", "故障現象", "原因說明", "備註",
+    "檢修日期", "完工日期", "工作單狀態",
+)
+DATE_FIELDS = {"檢修日期", "完工日期"}
 
 
 def _note_table_summary(response: str) -> str:
@@ -71,6 +76,46 @@ def _note_record(
     }
     record.update({field: str(row[field]) for field in NOTE_FIELDS[1:]})
     return record
+
+
+def _basic_field_value(control: Any, *, field: str) -> str:
+    if control.name == "textarea":
+        return control.get_text()
+    value = str(control.get("value", ""))
+    if field not in DATE_FIELDS or value:
+        return value
+    title = str(control.get("title", ""))
+    if title:
+        return title
+    timestamp = control.get("dojovalue")
+    if not timestamp:
+        return ""
+    try:
+        taipei = timezone(timedelta(hours=8))
+        return datetime.fromtimestamp(int(str(timestamp)) / 1000, taipei).strftime(
+            "%Y/%m/%d"
+        )
+    except (ValueError, OverflowError, OSError) as exc:
+        raise MMISClientError(f"臨時檢修工單{field}日期無效") from exc
+
+
+def parse_temporary_repair_basic_info(response: str) -> dict[str, str]:
+    """Read visible work-order fields by label/for, including duplicate date controls."""
+    _, soup = _parse_maximo_markup(response)
+    result: dict[str, str] = {}
+    for field in BASIC_FIELDS:
+        values = []
+        for label in soup.find_all("label", attrs={"for": True}):
+            if label.get_text(" ", strip=True).rstrip(":：").strip() != field:
+                continue
+            control = soup.find(id=str(label["for"]))
+            if control is None or control.name not in {"input", "textarea"}:
+                raise MMISClientError(f"臨時檢修工單基本資料找不到{field}輸入欄位")
+            values.append(_basic_field_value(control, field=field))
+        if not values or len(set(values)) != 1:
+            raise MMISClientError(f"臨時檢修工單基本資料{field}缺失或不一致")
+        result[field] = values[0]
+    return result
 
 
 def _selected_note_row(response: str, *, table_prefix: str) -> int | None:
@@ -221,9 +266,8 @@ class TemporaryRepairProcedureReader:
             value="",
             xhr_seq=6,
         )
-        vehicle = parse_labeled_inputs(
-            detail, field_names=("車組/車號",), context_name="臨時檢修工單"
-        )["車組/車號"]
+        basic_info = parse_temporary_repair_basic_info(detail)
+        vehicle = basic_info["車組/車號"]
         if vehicle != rows[0]["車組/車號"]:
             raise MMISClientError("工單明細車組/車號與查詢結果不相符")
         tab = parse_maximo_tab_target(detail, title="檢修回報")
@@ -330,6 +374,9 @@ class TemporaryRepairProcedureReader:
             "success": True,
             "query_name": QUERY_NAME,
             "work_order": number,
-            "count": len(records),
-            "records": records,
+            **basic_info,
+            "維修程序概況": {
+                "count": len(records),
+                "records": records,
+            },
         }

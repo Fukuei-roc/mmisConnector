@@ -12,6 +12,7 @@ from mmis_connector.temporary_repair.reader import (
     TemporaryRepairProcedureReader,
     _note_record,
     _note_table_summary,
+    parse_temporary_repair_basic_info,
 )
 from tools.mmis_development import (
     query_temporary_repair_work_order_maintenance_procedure_summary as tool,
@@ -23,6 +24,54 @@ RECORDING = Path(
     r"\2026-10-05_query-temporary-repair-work-order-maintenance-procedure-summary"
     r"\raw.har"
 )
+BASIC_RECORDING = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-05_query-temporary-repair-work-order-basic-information"
+    r"\raw.har"
+)
+BASIC_DOM = BASIC_RECORDING.parent / "dom" / "2026-10-05T060838-420.html"
+
+
+@pytest.mark.parametrize("source", ["har", "dom"])
+def test_basic_information_recording_has_all_eight_visible_fields(source) -> None:
+    if not BASIC_RECORDING.exists() or not BASIC_DOM.exists():
+        pytest.skip("基本資料錄製證據不在本機")
+    if source == "har":
+        entries = json.loads(BASIC_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+        response = entries[352]["response"]["content"]["text"]
+    else:
+        response = BASIC_DOM.read_text(encoding="utf-8")
+
+    basic = parse_temporary_repair_basic_info(response)
+
+    assert {key: value for key, value in basic.items() if key != "備註"} == {
+        "車組/車號": "EMU815",
+        "檢修級別": "C1",
+        "故障現象": "10/3-4252次EMA815不鬆軔事故",
+        "原因說明": "BECU單元故障，無不鬆軔情形",
+        "檢修日期": "2026/10/05",
+        "完工日期": "2026/10/05",
+        "工作單狀態": "完工待回報",
+    }
+    assert basic["備註"].startswith("1.庫內啟動測試EMA815")
+    assert "\n2." in basic["備註"] and "\n3." in basic["備註"]
+
+
+def test_basic_information_rejects_conflicting_duplicate_dates() -> None:
+    if not BASIC_DOM.exists():
+        pytest.skip("基本資料錄製 DOM 不在本機")
+    _, soup = _parse_maximo_markup(BASIC_DOM.read_text(encoding="utf-8"))
+    date_labels = [
+        label for label in soup.find_all("label", attrs={"for": True})
+        if label.get_text(" ", strip=True).rstrip(":：").strip() == "檢修日期"
+    ]
+    assert len(date_labels) == 2
+    second = soup.find("input", id=date_labels[1]["for"])
+    assert second is not None
+    second["title"] = "2026/10/06"
+
+    with pytest.raises(MMISClientError, match="檢修日期缺失或不一致"):
+        parse_temporary_repair_basic_info(str(soup))
 
 
 def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> None:
@@ -50,14 +99,18 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
 
     assert result["success"] is True
     assert result["work_order"] == "115-C2-41266"
-    assert result["count"] == 2
-    assert [row["車組/車號"] for row in result["records"]] == ["ED813", "ED813"]
-    assert [row["故障類別"] for row in result["records"]] == ["911", "111"]
-    assert [row["材料編號(PA)"] for row in result["records"]] == ["1780011124", "120338212D"]
-    assert [row["更換數量"] for row in result["records"]] == ["1.00", "1.00"]
-    assert result["records"][0]["故障現象"] == "其它問題：Batk2不動作"
-    assert result["records"][1]["故障現象"] == "集電舟碳刷撞損"
-    assert all(len(row) == 9 and "故障類別說明" in row for row in result["records"])
+    assert result["車組/車號"] == "ED813"
+    assert result["檢修級別"] == "C2"
+    assert "count" not in result and "records" not in result
+    summary = result["維修程序概況"]
+    assert summary["count"] == 2
+    assert [row["車組/車號"] for row in summary["records"]] == ["ED813", "ED813"]
+    assert [row["故障類別"] for row in summary["records"]] == ["911", "111"]
+    assert [row["材料編號(PA)"] for row in summary["records"]] == ["1780011124", "120338212D"]
+    assert [row["更換數量"] for row in summary["records"]] == ["1.00", "1.00"]
+    assert summary["records"][0]["故障現象"] == "其它問題：Batk2不動作"
+    assert summary["records"][1]["故障現象"] == "集電舟碳刷撞損"
+    assert all(len(row) == 9 and "故障類別說明" in row for row in summary["records"])
     assert [(call["event_type"], call["value"]) for call in calls] == [
         ("click", ""), ("click", "useAllRecsQuery_OPTION"),
         ("setvalue", "115-C2-41266"), ("setvalue", "C1,C2,C3"),
@@ -127,8 +180,7 @@ def test_empty_recorded_note_table_returns_empty_array(monkeypatch) -> None:
 
     result = reader.run("115-C2-41266")
 
-    assert result["count"] == 0
-    assert result["records"] == []
+    assert result["維修程序概況"] == {"count": 0, "records": []}
 
 
 def test_other_problem_on_unselected_row_opens_that_rows_detail(monkeypatch) -> None:
@@ -162,8 +214,9 @@ def test_other_problem_on_unselected_row_opens_that_rows_detail(monkeypatch) -> 
 
     result = reader.run("115-C2-41266")
 
-    assert result["records"][0]["故障現象"] == "其它問題：Batk2不動作"
-    assert result["records"][1]["故障現象"] == "其它問題：第二列補充"
+    records = result["維修程序概況"]["records"]
+    assert records[0]["故障現象"] == "其它問題：Batk2不動作"
+    assert records[1]["故障現象"] == "其它問題：第二列補充"
     assert calls[-1]["target_id"] == "me0c66d4a_tdrow_[C:0]_tgdet-ti[R:1]"
     assert calls[-1]["xhr_seq"] == 8
 
@@ -191,7 +244,7 @@ def test_row_selection_without_textarea_update_reuses_rendered_value(monkeypatch
 
     result = reader.run("115-C2-41266")
 
-    assert [row["故障現象"] for row in result["records"]] == [
+    assert [row["故障現象"] for row in result["維修程序概況"]["records"]] == [
         "其它問題：Batk2不動作",
         "其它問題：Batk2不動作",
     ]
@@ -226,12 +279,13 @@ def test_all_three_other_fields_use_the_same_selected_rows_textareas(monkeypatch
 
     result = reader.run("115-C2-41266")
 
-    assert result["count"] == 2
-    assert result["records"][0]["故障原因"] == "不良"
-    assert result["records"][0]["處置措施"] == "更換"
-    assert result["records"][1]["故障現象"] == "其它問題：其它故障現象測試"
-    assert result["records"][1]["故障原因"] == "其它原因：其它故障原因測試"
-    assert result["records"][1]["處置措施"] == "其它：其它處置措施測試"
+    summary = result["維修程序概況"]
+    assert summary["count"] == 2
+    assert summary["records"][0]["故障原因"] == "不良"
+    assert summary["records"][0]["處置措施"] == "更換"
+    assert summary["records"][1]["故障現象"] == "其它問題：其它故障現象測試"
+    assert summary["records"][1]["故障原因"] == "其它原因：其它故障原因測試"
+    assert summary["records"][1]["處置措施"] == "其它：其它處置措施測試"
 
 
 def test_tool_rejects_wrong_argument_count_without_loading_config(monkeypatch, capsys) -> None:
