@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-023",
+  "title": "查詢日檢檢修記錄中備註非空的資料",
+  "content": "輸入 1A 工作單號，依序進入檢修回報及檢修記錄；最外層保留查詢資訊，「檢修記錄」只包含 count 與備註非空列的 records。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-07",
+  "epic": "MMIS HTTP 日檢檢修記錄查詢",
+  "userStory": "查詢有備註的檢修記錄",
+  "dependsOn": ["MMIS-001", "MMIS-002"],
+  "order": 23,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": true, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/task-cards/MMIS-023.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/verification/MMIS-023.md", "pr": ""},
+  "refs": ["src/mmis_connector/daily_inspection/reader.py", "tools/mmis_development/query_daily_inspection_work_order_inspection_records.py", "tests/test_daily_inspection_inspection_records.py"],
+  "evidence": {"commands": ["python -m pytest tests/test_daily_inspection_inspection_records.py -q", "python -m pytest -q", "python -m compileall -q src tools/mmis_development tests", "python -m pip check", "git diff --check", "python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-71815", "python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-10899"], "findings": ["10 個目標測試通過；完整測試無失敗", "26 個既有測試因外部錄製缺檔跳過", "兩筆 live 查詢各回傳 1 筆；115-1A-10899 的「檢修記錄」只有 count 與 records", "無新增瀏覽器依賴或敏感常值"], "residual": "尚無 live 空表與多頁錄製；結構不同時採 fail closed。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-07", "text": "確認規格並要求開始實作。"}, {"name": "專案使用者", "time": "2026-10-07", "text": "成功輸出的原有欄位全部置於 JSON 的「檢修記錄」下，以便後續新增其他同層項目。"}, {"name": "專案使用者", "time": "2026-10-07", "text": "再次明確指定「檢修記錄」只包含 count 與 records，其餘欄位留在最外層。"}, {"name": "專案使用者", "time": "2026-10-07", "text": "確認最終輸出後要求 commit 並推送至 GitHub。"}]
+}

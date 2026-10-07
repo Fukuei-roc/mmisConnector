@@ -53,6 +53,20 @@
       ]
     },
     {
+      "name": "MMIS HTTP 日檢檢修記錄查詢",
+      "definition": "依工作單號以 HTTP-only 流程讀取日檢工單檢修記錄，輸出備註非空的指定欄位。",
+      "stories": [
+        {
+          "name": "查詢有備註的檢修記錄",
+          "definition": "輸入工作單號，取得所有備註非空的裝置名稱、回報結果與備註。"
+        },
+        {
+          "name": "判斷無備註結果",
+          "definition": "所有備註皆空時以成功 JSON 輸出 count=0 與 records=[]。"
+        }
+      ]
+    },
+    {
       "name": "MMIS HTTP 日檢工單故障通報勾稽",
       "definition": "以 HTTP-only 流程依工作單號進入動力車日檢(1A)工單，勾稽指定故障通報並返回清單。",
       "stories": [

@@ -27,6 +27,7 @@
 | `MaximoEventClient` | 共用 Maximo event POST 與 app 切換 | `src/mmis_connector/events.py` |
 | `DailyInspectionWorkOrderQuery` | 依車號與日期查詢 1A 工單 | `src/mmis_connector/daily_inspection/query.py` |
 | `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/daily_inspection/reader.py` |
+| `DailyInspectionInspectionRecordReader` | 依工作單號讀取 1A 工單檢修記錄中備註非空的列 | `src/mmis_connector/daily_inspection/reader.py` |
 | `DailyInspectionWorkOrderFaultNoticeLinker` | 對唯一 1A 工單勾稽指定故障通報、驗證結果並返回清單 | `src/mmis_connector/daily_inspection/linker.py` |
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/fault_notices/query.py` |
 | `UnclosedFaultNoticeQuery` | 以固定新竹機務段、A/B 級條件查詢未結案故障通報 | `src/mmis_connector/fault_notices/query.py` |

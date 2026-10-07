@@ -4,7 +4,13 @@ import re
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession, PageState
-from ..parser import parse_maximo_page_info, parse_maximo_table
+from ..parser import (
+    _parse_maximo_markup,
+    parse_maximo_page_info,
+    parse_maximo_tab_target,
+    parse_maximo_table,
+    parse_maximo_table_schema,
+)
 from .query import (
     REQUIRED_HEADERS,
     DailyInspectionWorkOrderQuery,
@@ -14,6 +20,7 @@ from .query import (
 QUERY_NAME = "以工作單號查詢日檢工單內容"
 FAULT_TABLE_SUMMARY = "故障通報管理"
 FAULT_HEADERS = {"故障通報號", "發生日期", "車組/車號", "故障現象"}
+INSPECTION_RECORD_HEADERS = {"裝置名稱", "回報結果", "備註"}
 WORK_ORDER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 
 
@@ -143,4 +150,96 @@ class DailyInspectionWorkOrderDetailReader:
             "has_fault_notices": bool(fault_notices),
             "count": len(fault_notices),
             "records": fault_notices,
+        }
+
+
+class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader):
+    """Read inspection-record rows with nonempty remarks from one 1A work order."""
+
+    def run(self, work_order: str) -> dict[str, Any]:
+        normalized_work_order, detail_response = self.open_detail(work_order)
+        state = self.client.state
+        if state is None:
+            raise MMISClientError("日檢工單明細缺少頁面狀態")
+        report_tab = parse_maximo_tab_target(detail_response, title="檢修回報")
+        report_response = self._post_event(
+            state=self.client.state or state,
+            current_focus=report_tab,
+            event_type="click",
+            target_id=report_tab,
+            value="",
+            xhr_seq=6,
+        )
+        record_tab = parse_maximo_tab_target(report_response, title="檢修記錄")
+        response = self._post_event(
+            state=self.client.state or state,
+            current_focus=record_tab,
+            event_type="click",
+            target_id=record_tab,
+            value="",
+            xhr_seq=7,
+        )
+
+        records: list[dict[str, str]] = []
+        expected_start = 1
+        expected_total: int | None = None
+        xhr_seq = 8
+        while True:
+            schema = parse_maximo_table_schema(
+                response, required_headers=INSPECTION_RECORD_HEADERS
+            )
+            _, soup = _parse_maximo_markup(response)
+            table = soup.find("table", id=f"{schema.prefix}_tbod-tbd")
+            summary = str(table.get("summary", "")) if table is not None else ""
+            if not summary.startswith("工作單的作業 "):
+                raise MMISClientError("檢修記錄找不到工作單的作業表格")
+            _, rows = parse_maximo_table(
+                response,
+                required_headers=INSPECTION_RECORD_HEADERS,
+                table_summary=summary,
+            )
+            page = parse_maximo_page_info(
+                response, table_prefix=schema.prefix, context_name="檢修記錄"
+            )
+            if expected_total is None:
+                expected_total = page.total
+            if page.total != expected_total:
+                raise MMISClientError("檢修記錄分頁總筆數不一致")
+            if page.total == 0:
+                if rows or page.start != 0 or page.end != 0 or page.next_page_target:
+                    raise MMISClientError("檢修記錄空頁與表格資料不一致")
+                break
+            if page.start != expected_start or page.end - page.start + 1 != len(rows):
+                raise MMISClientError("檢修記錄分頁範圍與資料不一致")
+            records.extend(
+                {
+                    field: str(row[field]).strip()
+                    for field in ("裝置名稱", "回報結果", "備註")
+                }
+                for row in rows
+                if str(row["備註"]).strip()
+            )
+            if page.end == page.total:
+                if page.next_page_target is not None:
+                    raise MMISClientError("檢修記錄末頁仍有下一頁")
+                break
+            if page.next_page_target is None:
+                raise MMISClientError("檢修記錄尚未讀完但找不到下一頁")
+            expected_start = page.end + 1
+            response = self._post_event(
+                state=self.client.state or state,
+                current_focus=page.next_page_target,
+                event_type="click",
+                target_id=page.next_page_target,
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+
+        return {
+            "success": True,
+            "query_name": "查詢日檢工單檢修記錄",
+            "work_order": normalized_work_order,
+            "count": len(records),
+            "records": records,
         }
