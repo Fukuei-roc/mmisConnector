@@ -36,17 +36,17 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 
 | Tool | 用途 | 執行方式 |
 |---|---|---|
-| 查詢未處理故障通報 | 驗證 saved query、table parsing 與 pagination | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
-| 查詢未結案故障通報 | 以固定新竹機務段、A/B 級條件驗證 saved query、filter 與完整分頁 JSON | `python -m tools.mmis_development.query_unclosed_fault_notices` |
-| 查詢臨時檢修工單的維修程序概況 | 先查預設清單，0 筆才切「所有記錄」重查；輸出最上層八個基本欄位與 `已勾稽故障通報`，並在 `維修程序概況` 中輸出紀事清單九欄；兩份清單各有 `count` 與 `records`，只印 JSON | `python -m tools.mmis_development.query_temporary_repair_work_order_maintenance_procedure_summary 115-C1-41264` |
-| 查詢故障通報完整資料（最完整） | 依通報號一次輸出六欄基本資料、ATP 標記、所有段檢修工單、CA 查修工單、故障分析五欄；勾選 ATP 時另輸出 ATP 分析三欄，未勾選時為 `null`。結果只印出 JSON | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
-| 查詢故障通報的故障分析 | 依通報號讀取故障分析頁籤五個欄位 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
-| 查詢故障通報關聯的 ATP 故障分析 | 先確認 ATP故障 已勾選，再讀取故障要因、故障因子、故障項目 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` |
-| 查詢故障通報關聯的工單 | 依通報號讀取故障追蹤頁籤的所有段檢修工單，依工作單去重 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
-| 查詢故障通報關聯的查修工單 | 依通報號讀取故障追蹤頁籤的查修工單十欄，僅保留 CA 工單 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
-| 依車號與日期查詢日檢工單 | 驗證工單 filter 與日期條件 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` |
-| 依工作單號讀取明細 | 驗證唯一工單與故障通報表格 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` |
-| 依工作單號勾稽故障通報 | 驗證 mutation 與結果確認 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` |
+| 查詢未處理故障通報 | 無需輸入；取得本段未處理故障通報清單。 | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
+| 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
+| 查詢臨時檢修工單明細 | 輸入工作單號；取得工單基本資料、已勾稽故障通報及維修程序概況。 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C1-41264` |
+| 查詢故障通報完整資料（最完整） | 輸入通報號；取得基本資料、ATP 標記、段檢修與 CA 查修工單、故障分析，以及適用時的 ATP 分析。 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
+| 查詢故障通報的故障分析 | 輸入通報號；取得事故現象、處理概況、故障原因、處理情形及改善對策。 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
+| 查詢故障通報關聯的 ATP 故障分析 | 輸入已勾選 ATP 故障的通報號；取得故障要因、故障因子及故障項目。 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` |
+| 查詢故障通報關聯的工單 | 輸入通報號；取得關聯的段檢修工單清單。 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
+| 查詢故障通報關聯的查修工單 | 輸入通報號；取得關聯的 CA 查修工單清單。 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
+| 依車號與日期查詢日檢工單 | 輸入車號與檢修日期條件；取得符合條件的日檢工單清單。 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` |
+| 依工作單號讀取明細 | 輸入日檢工作單號；取得該工單已勾稽的故障通報清單。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` |
+| 依工作單號勾稽故障通報 | 輸入日檢工作單號與通報號；將通報勾稽至工單並確認結果。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` |
 
 最後一項會修改 MMIS 資料。只能在明確核准的受控 Live 驗證或人工單筆操作中使用；若
 結果不明，先人工確認，不得直接重送。

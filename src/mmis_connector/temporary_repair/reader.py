@@ -21,7 +21,7 @@ from ..parser import (
 )
 
 
-QUERY_NAME = "查詢臨時檢修工單的維修程序概況"
+QUERY_NAME = "查詢臨時檢修工單明細"
 LIST_HEADERS = {"工作單", "檢修級別", "車組/車號"}
 LIST_TABLE_SUMMARY = "工作單"
 NOTE_FIELDS = (

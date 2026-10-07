@@ -16,7 +16,7 @@ from mmis_connector.temporary_repair.reader import (
     parse_temporary_repair_linked_fault_notices,
 )
 from tools.mmis_development import (
-    query_temporary_repair_work_order_maintenance_procedure_summary as tool,
+    query_temporary_repair_work_order_detail as tool,
 )
 
 
@@ -260,6 +260,7 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
     result = reader.run(" 115-C2-41266 ")
 
     assert result["success"] is True
+    assert result["query_name"] == "查詢臨時檢修工單明細"
     assert result["work_order"] == "115-C2-41266"
     assert result["車組/車號"] == "ED813"
     assert result["檢修級別"] == "C2"
@@ -455,7 +456,9 @@ def test_all_three_other_fields_use_the_same_selected_rows_textareas(monkeypatch
 def test_tool_rejects_wrong_argument_count_without_loading_config(monkeypatch, capsys) -> None:
     monkeypatch.setattr(tool.MMISConfig, "from_env", lambda: pytest.fail("unexpected config load"))
     assert tool.main([]) == 1
-    assert json.loads(capsys.readouterr().out)["error"] == "MMISClientError"
+    error = json.loads(capsys.readouterr().out)
+    assert error["error"] == "MMISClientError"
+    assert "query_temporary_repair_work_order_detail <工作單號>" in error["message"]
 
 
 def test_invalid_work_order_fails_before_app_load(monkeypatch) -> None:

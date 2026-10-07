@@ -11,7 +11,7 @@ from ._support import run_json_tool
 
 USAGE = (
     "python -m tools.mmis_development."
-    "query_temporary_repair_work_order_maintenance_procedure_summary <工作單>"
+    "query_temporary_repair_work_order_detail <工作單號>"
 )
 
 
