@@ -14,6 +14,7 @@ from mmis_connector.temporary_repair.reader import (
     _note_table_summary,
     parse_temporary_repair_basic_info,
     parse_temporary_repair_linked_fault_notices,
+    parse_temporary_repair_test_run_page,
 )
 from tools.mmis_development import (
     query_temporary_repair_work_order_detail as tool,
@@ -36,6 +37,102 @@ OPTIMIZATION_RECORDING = Path(
     r"\2026-10-05_optimize-temporary-repair-work-order-query-speed"
     r"\raw.har"
 )
+TEST_RUN_RECORDING = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-07_query-whether-temporary-repair-work-order-includes-test-run-order"
+    r"\raw.har"
+)
+
+
+def test_recorded_test_run_page_reads_requested_six_fields() -> None:
+    if not TEST_RUN_RECORDING.exists():
+        pytest.skip("試車報告錄製 HAR 不在本機")
+    entries = json.loads(TEST_RUN_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    records, page = parse_temporary_repair_test_run_page(
+        entries[355]["response"]["content"]["text"]
+    )
+    assert page.total == 1
+    assert records == [{
+        "工作單": "115-C2-41283-001", "檢修內容": "試車報告",
+        "車組/車號": "EMU939", "檢修廠段": "MHY10",
+        "檢修單位": "檢查室", "工作單狀態": "核簽中",
+    }]
+
+
+def _test_run_table(rows: list[tuple[str, ...]], *, total: int | None = None) -> str:
+    headers = ("工作單", "檢修內容", "車組/車號", "檢修廠段", "檢修單位", "工作單狀態")
+    count = len(rows) if total is None else total
+    end = len(rows)
+    parts = [
+        '<table summary="工作單的子項 123" id="child_tbod-tbd">',
+        '<span class="tCount" id="child-lb3">'
+        + (f"1 - {end}/{count}" if count else "0 - 0/0") + "</span>",
+    ]
+    parts.extend(
+        f'<span id="child_ttrow_[C:{column}]_ttitle-lb">{header}</span>'
+        for column, header in enumerate(headers, 1)
+    )
+    for index, values in enumerate(rows):
+        parts.append(f'<tr id="child_tbod_tdrow-tr[R:{index}]">')
+        for column, value in enumerate(values, 1):
+            parts.append(
+                f'<td id="child_tdrow_[C:{column}]-c[R:{index}]">'
+                f'<input id="child_tdrow_[C:{column}]_txt-tb[R:{index}]" value="{value}">'
+                "</td>"
+            )
+        parts.append("</tr>")
+    parts.append("</table>")
+    if count > end:
+        parts.append('<a id="child-ti1"><img id="child-ti1_img" src="tablebtn_next_on.gif"></a>')
+    return "".join(parts)
+
+
+def test_test_run_page_filters_other_children_and_keeps_multiple_reports() -> None:
+    html = _test_run_table([
+        ("115-C2-41283-001", "試車報告", "EMU939", "MHY10", "檢查室", "核簽中"),
+        ("115-C2-41283-002", "一般檢修", "EMU939", "MHY10", "檢查室", "完成"),
+        ("115-C2-41283-003", "試車報告", "EMU939", "MHY10", "檢查室", "完成"),
+    ])
+    records, page = parse_temporary_repair_test_run_page(html)
+    assert page.total == 3
+    assert [row["工作單"] for row in records] == [
+        "115-C2-41283-001", "115-C2-41283-003"
+    ]
+    assert records[0] == {
+        "工作單": "115-C2-41283-001", "檢修內容": "試車報告",
+        "車組/車號": "EMU939", "檢修廠段": "MHY10",
+        "檢修單位": "檢查室", "工作單狀態": "核簽中",
+    }
+
+
+def test_test_run_page_accepts_empty_child_table() -> None:
+    records, page = parse_temporary_repair_test_run_page(_test_run_table([]))
+    assert records == []
+    assert page.total == 0
+
+
+def test_test_run_page_ignores_other_child_work_orders() -> None:
+    records, page = parse_temporary_repair_test_run_page(_test_run_table([
+        ("115-C2-41283-002", "一般檢修", "EMU939", "MHY10", "檢查室", "完成"),
+    ]))
+    assert records == []
+    assert page.total == 1
+
+
+def test_test_run_page_exposes_next_page_target() -> None:
+    _, page = parse_temporary_repair_test_run_page(_test_run_table([
+        ("115-C2-41283-001", "試車報告", "EMU939", "MHY10", "檢查室", "核簽中"),
+    ], total=2))
+    assert page.next_page_target == "child-ti1"
+
+
+def test_test_run_page_rejects_incomplete_child_page() -> None:
+    with pytest.raises(MMISClientError, match="分頁範圍"):
+        parse_temporary_repair_test_run_page(
+            _test_run_table([
+                ("115-C2-41283-001", "試車報告", "EMU939", "MHY10", "檢查室", "核簽中")
+            ]).replace("1 - 1/1", "1 - 2/2")
+        )
 
 
 def _recorded_query_calls(
@@ -267,6 +364,8 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
     assert result["已勾稽故障通報"] == {"count": 0, "records": []}
     assert list(result).index("工作單狀態") < list(result).index("已勾稽故障通報")
     assert list(result).index("已勾稽故障通報") < list(result).index("維修程序概況")
+    assert list(result)[-1] == "試車報告"
+    assert result["試車報告"] == {"count": 0, "records": []}
     assert "count" not in result and "records" not in result
     summary = result["維修程序概況"]
     assert summary["count"] == 2
@@ -346,6 +445,7 @@ def test_empty_recorded_note_table_returns_empty_array(monkeypatch) -> None:
     result = reader.run("115-C2-41266")
 
     assert result["維修程序概況"] == {"count": 0, "records": []}
+    assert result["試車報告"] == {"count": 0, "records": []}
 
 
 def test_other_problem_on_unselected_row_opens_that_rows_detail(monkeypatch) -> None:

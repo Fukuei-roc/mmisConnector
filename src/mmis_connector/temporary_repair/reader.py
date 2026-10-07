@@ -13,6 +13,7 @@ from ..daily_inspection.reader import (
 from ..events import MaximoEventClient
 from ..parser import (
     _parse_maximo_markup,
+    FaultNoticePageInfo,
     MaximoTableSchema,
     parse_maximo_page_info,
     parse_maximo_tab_target,
@@ -48,6 +49,9 @@ BASIC_FIELDS = (
     "檢修日期", "完工日期", "工作單狀態",
 )
 DATE_FIELDS = {"檢修日期", "完工日期"}
+TEST_RUN_FIELDS = (
+    "工作單", "檢修內容", "車組/車號", "檢修廠段", "檢修單位", "工作單狀態",
+)
 
 
 def _note_table_summary(response: str) -> str:
@@ -146,6 +150,38 @@ def parse_temporary_repair_linked_fault_notices(
     ):
         raise MMISClientError("故障通報管理結果超過單頁或分頁不一致，拒絕回傳不完整資料")
     return {"count": len(records), "records": records}
+
+
+def parse_temporary_repair_test_run_page(
+    response: str,
+) -> tuple[list[dict[str, str]], FaultNoticePageInfo]:
+    """Read one page of child work orders and retain only test run reports."""
+    _, soup = _parse_maximo_markup(response)
+    summaries = [
+        str(table["summary"])
+        for table in soup.find_all("table", summary=True)
+        if str(table["summary"]).startswith("工作單的子項 ")
+    ]
+    if len(summaries) != 1:
+        raise MMISClientError("檢修回報找不到唯一的工作單子單表格")
+    schema, rows = parse_maximo_table(
+        response, required_headers=set(TEST_RUN_FIELDS), table_summary=summaries[0]
+    )
+    if schema is None:
+        raise MMISClientError("工作單子單表格缺少必要欄位")
+    page = parse_maximo_page_info(
+        response, table_prefix=schema.prefix, context_name="工作單子單"
+    )
+    if page.total == 0:
+        if rows or page.start != 0 or page.end != 0 or page.next_page_target:
+            raise MMISClientError("工作單子單空頁與表格資料不一致")
+    elif page.end - page.start + 1 != len(rows):
+        raise MMISClientError("工作單子單分頁範圍與資料不一致")
+    reports = [
+        {field: str(row[field]) for field in TEST_RUN_FIELDS}
+        for row in rows if row["檢修內容"] == "試車報告"
+    ]
+    return reports, page
 
 
 def _selected_note_row(response: str, *, table_prefix: str) -> int | None:
@@ -344,6 +380,39 @@ class TemporaryRepairProcedureReader:
             xhr_seq=xhr_seq,
         )
         xhr_seq += 1
+        report_response = response
+        report_records: list[dict[str, str]] = []
+        report_start = 1
+        report_total: int | None = None
+        while True:
+            report_page_records, report_page = parse_temporary_repair_test_run_page(
+                report_response
+            )
+            if report_total is None:
+                report_total = report_page.total
+            if report_page.total != report_total:
+                raise MMISClientError("工作單子單分頁總筆數不一致")
+            if report_page.total == 0:
+                break
+            if report_page.start != report_start:
+                raise MMISClientError("工作單子單分頁起點不連續")
+            report_records.extend(report_page_records)
+            if report_page.end == report_page.total:
+                if report_page.next_page_target is not None:
+                    raise MMISClientError("工作單子單末頁仍有下一頁")
+                break
+            if report_page.next_page_target is None:
+                raise MMISClientError("工作單子單尚未讀完但找不到下一頁")
+            report_start = report_page.end + 1
+            report_response = self.events.post(
+                state=self.client.state or state,
+                current_focus=report_page.next_page_target,
+                event_type="click",
+                target_id=report_page.next_page_target,
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
         summary = _note_table_summary(response)
         records: list[dict[str, str]] = []
         expected_start = 1
@@ -444,4 +513,5 @@ class TemporaryRepairProcedureReader:
                 "count": len(records),
                 "records": records,
             },
+            "試車報告": {"count": len(report_records), "records": report_records},
         }
