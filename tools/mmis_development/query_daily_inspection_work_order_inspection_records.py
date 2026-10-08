@@ -26,6 +26,7 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
         "query_name": result["query_name"],
         "work_order": result["work_order"],
         "檢修記錄": {"count": result["count"], "records": result["records"]},
+        "重要事項紀錄": result["important_notes"],
     }
 
 

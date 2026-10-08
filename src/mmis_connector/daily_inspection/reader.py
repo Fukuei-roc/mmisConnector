@@ -5,11 +5,15 @@ from typing import Any
 
 from ..auth import MMISClientError, MMISSession, PageState
 from ..parser import (
+    SUPPLEMENT_FIELDS,
     _parse_maximo_markup,
+    confirm_selected_note_row,
     parse_maximo_page_info,
     parse_maximo_tab_target,
     parse_maximo_table,
     parse_maximo_table_schema,
+    selected_note_row,
+    supplemental_note_fields,
 )
 from .query import (
     REQUIRED_HEADERS,
@@ -21,6 +25,11 @@ QUERY_NAME = "以工作單號查詢日檢工單內容"
 FAULT_TABLE_SUMMARY = "故障通報管理"
 FAULT_HEADERS = {"故障通報號", "發生日期", "車組/車號", "故障現象"}
 INSPECTION_RECORD_HEADERS = {"裝置名稱", "回報結果", "備註"}
+IMPORTANT_NOTE_FIELDS = (
+    "車組/車號", "故障類別", "故障類別說明", "故障現象", "故障原因",
+    "處置措施", "材料編號(PA)", "員工代號", "人員姓名",
+)
+IMPORTANT_NOTE_SUMMARY = "紀事(備註)清單"
 WORK_ORDER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 
 
@@ -156,6 +165,86 @@ class DailyInspectionWorkOrderDetailReader:
 class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader):
     """Read inspection-record rows with nonempty remarks from one 1A work order."""
 
+    def _read_important_notes(
+        self, response: str, *, state: PageState, xhr_seq: int
+    ) -> tuple[list[dict[str, str]], int]:
+        records: list[dict[str, str]] = []
+        expected_start = 1
+        expected_total: int | None = None
+        while True:
+            schema, rows = parse_maximo_table(
+                response,
+                required_headers=set(IMPORTANT_NOTE_FIELDS),
+                table_summary=IMPORTANT_NOTE_SUMMARY,
+            )
+            if schema is None:
+                raise MMISClientError("檢修回報缺少紀事清單表格")
+            page = parse_maximo_page_info(
+                response, table_prefix=schema.prefix, context_name="紀事清單"
+            )
+            if expected_total is None:
+                expected_total = page.total
+            if page.total != expected_total:
+                raise MMISClientError("紀事清單分頁總筆數不一致")
+            if page.total == 0:
+                if rows or page.start != 0 or page.end != 0 or page.next_page_target:
+                    raise MMISClientError("紀事清單空頁與表格資料不一致")
+                break
+            if page.start != expected_start or page.end - page.start + 1 != len(rows):
+                raise MMISClientError("紀事清單分頁範圍與資料不一致")
+            selected_row = selected_note_row(response, table_prefix=schema.prefix)
+            rendered = supplemental_note_fields(response, table_prefix=schema.prefix)
+            for row_number, row in enumerate(rows):
+                record = {field: str(row[field]) for field in IMPORTANT_NOTE_FIELDS}
+                supplemental_fields = [
+                    field for field, (choices, _) in SUPPLEMENT_FIELDS.items()
+                    if record[field] in choices
+                ]
+                if supplemental_fields:
+                    if selected_row != row_number:
+                        target = f"{schema.prefix}_tdrow_[C:0]_tgdet-ti[R:{row_number}]"
+                        detail_response = self._post_event(
+                            state=self.client.state or state,
+                            current_focus=target,
+                            event_type="click",
+                            target_id=target,
+                            value="",
+                            xhr_seq=xhr_seq,
+                        )
+                        xhr_seq += 1
+                        confirm_selected_note_row(
+                            detail_response, table_prefix=schema.prefix, row=row_number
+                        )
+                        selected_row = row_number
+                        rendered = supplemental_note_fields(
+                            detail_response, table_prefix=schema.prefix,
+                            rendered=rendered,
+                        )
+                    for field in supplemental_fields:
+                        if field not in rendered:
+                            raise MMISClientError(f"紀事明細找不到{field}補充欄位")
+                        supplement = rendered[field][1]
+                        if supplement:
+                            record[field] += f"：{supplement}"
+                records.append(record)
+            if page.end == page.total:
+                if page.next_page_target is not None:
+                    raise MMISClientError("紀事清單末頁仍有下一頁")
+                break
+            if page.next_page_target is None:
+                raise MMISClientError("紀事清單尚未讀完但找不到下一頁")
+            expected_start = page.end + 1
+            response = self._post_event(
+                state=self.client.state or state,
+                current_focus=page.next_page_target,
+                event_type="click",
+                target_id=page.next_page_target,
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+        return records, xhr_seq
+
     def run(self, work_order: str) -> dict[str, Any]:
         normalized_work_order, detail_response = self.open_detail(work_order)
         state = self.client.state
@@ -170,6 +259,9 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             value="",
             xhr_seq=6,
         )
+        important_notes, xhr_seq = self._read_important_notes(
+            report_response, state=state, xhr_seq=7
+        )
         record_tab = parse_maximo_tab_target(report_response, title="檢修記錄")
         response = self._post_event(
             state=self.client.state or state,
@@ -177,13 +269,13 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             event_type="click",
             target_id=record_tab,
             value="",
-            xhr_seq=7,
+            xhr_seq=xhr_seq,
         )
 
         records: list[dict[str, str]] = []
         expected_start = 1
         expected_total: int | None = None
-        xhr_seq = 8
+        xhr_seq += 1
         while True:
             schema = parse_maximo_table_schema(
                 response, required_headers=INSPECTION_RECORD_HEADERS
@@ -242,4 +334,7 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             "work_order": normalized_work_order,
             "count": len(records),
             "records": records,
+            "important_notes": {
+                "count": len(important_notes), "records": important_notes,
+            },
         }

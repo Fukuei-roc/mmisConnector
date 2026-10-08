@@ -46,7 +46,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢故障通報關聯的查修工單 | 輸入通報號；取得關聯的 CA 查修工單清單。 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
 | 依車號與日期查詢日檢工單 | 輸入車號與檢修日期條件；取得符合條件的日檢工單清單。 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` |
 | 依工作單號讀取明細 | 輸入日檢工作單號；取得該工單已勾稽的故障通報清單。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` |
-| 查詢日檢檢修記錄備註 | 輸入日檢工作單號；JSON 的「檢修記錄」只包含 count 與 records，records 列出備註非空的裝置名稱、回報結果與備註。 | `python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-71815` |
+| 查詢日檢檢修記錄與重要事項 | 輸入日檢工作單號；JSON 的「檢修記錄」列出備註非空的裝置名稱、回報結果與備註；「重要事項紀錄」列出紀事清單的車組/車號、故障類別、故障類別說明、故障現象、故障原因、處置措施、材料編號(PA)、員工代號與人員姓名。兩項均包含 count 與 records；沒有資料時為 `{"count": 0, "records": []}`。 | `python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-71815` |
 | 依工作單號勾稽故障通報 | 輸入日檢工作單號與通報號；將通報勾稽至工單並確認結果。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` |
 
 最後一項會修改 MMIS 資料。只能在明確核准的受控 Live 驗證或人工單筆操作中使用；若

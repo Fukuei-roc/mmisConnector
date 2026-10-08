@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -12,13 +11,17 @@ from ..daily_inspection.reader import (
 )
 from ..events import MaximoEventClient
 from ..parser import (
+    SUPPLEMENT_FIELDS,
     _parse_maximo_markup,
     FaultNoticePageInfo,
     MaximoTableSchema,
+    confirm_selected_note_row as _confirm_selected_note_row,
     parse_maximo_page_info,
     parse_maximo_tab_target,
     parse_maximo_table,
     parse_maximo_table_schema,
+    selected_note_row as _selected_note_row,
+    supplemental_note_fields as _supplemental_note_fields,
 )
 
 
@@ -30,20 +33,6 @@ NOTE_FIELDS = (
     "材料編號(PA)", "更換數量",
 )
 DESCRIPTION_HEADERS = ("故障類別說明", "故障類型說明")
-SUPPLEMENT_FIELDS = {
-    "故障現象": (
-        {"其它問題", "其他問題"},
-        {"其它故障現象", "其他故障現象"},
-    ),
-    "故障原因": (
-        {"其它原因", "其他原因"},
-        {"其它故障原因", "其他故障原因"},
-    ),
-    "處置措施": (
-        {"其它", "其他"},
-        {"其它處置措施", "其他處置措施"},
-    ),
-}
 BASIC_FIELDS = (
     "車組/車號", "檢修級別", "故障現象", "原因說明", "備註",
     "檢修日期", "完工日期", "工作單狀態",
@@ -182,73 +171,6 @@ def parse_temporary_repair_test_run_page(
         for row in rows if row["檢修內容"] == "試車報告"
     ]
     return reports, page
-
-
-def _selected_note_row(response: str, *, table_prefix: str) -> int | None:
-    """Find the row whose detail pane is currently rendered."""
-    _, soup = _parse_maximo_markup(response)
-    table = soup.find("table", id=f"{table_prefix}_tbod-tbd")
-    if table is None:
-        raise MMISClientError("紀事清單找不到資料表格")
-    pattern = re.compile(rf"^{re.escape(table_prefix)}_tbod_tdrow-tr\[R:(\d+)\]$")
-    selected = []
-    for row in table.find_all("tr", id=True):
-        match = pattern.fullmatch(str(row["id"]))
-        if match and row.get("currentrow") == "true":
-            selected.append(int(match.group(1)))
-    if len(selected) > 1:
-        raise MMISClientError("紀事清單有多筆目前選取列")
-    return selected[0] if selected else None
-
-
-def _supplemental_note_fields(
-    response: str,
-    *,
-    table_prefix: str,
-    rendered: dict[str, tuple[str, str]] | None = None,
-) -> dict[str, tuple[str, str]]:
-    """Apply Maximo's partial textarea updates to the rendered detail values."""
-    _, soup = _parse_maximo_markup(response)
-    scope = soup.find("table", id=f"{table_prefix}_tdet-chld") or soup
-    values = dict(rendered or {})
-    for field, (_, labels) in SUPPLEMENT_FIELDS.items():
-        controls = []
-        for label in scope.find_all("label", attrs={"for": True}):
-            name = label.get_text(" ", strip=True).rstrip(":：").strip()
-            if name not in labels:
-                continue
-            textarea = scope.find("textarea", id=str(label["for"]))
-            if textarea is None:
-                raise MMISClientError(f"紀事明細的{field}補充欄位缺少 textarea")
-            controls.append(textarea)
-        if len(controls) > 1:
-            raise MMISClientError(f"紀事明細有多個{field}補充欄位")
-        if controls:
-            control = controls[0]
-            values[field] = str(control["id"]), control.get_text().strip()
-        elif field in values:
-            control_id, _ = values[field]
-            control = scope.find("textarea", id=control_id)
-            if control is not None:
-                values[field] = control_id, control.get_text().strip()
-    return values
-
-
-def _confirm_selected_note_row(response: str, *, table_prefix: str, row: int) -> None:
-    """Do not reuse a prior detail value unless the row selection was acknowledged."""
-    _, soup = _parse_maximo_markup(response)
-    selected = soup.find("tr", id=f"{table_prefix}_tbod_tdrow-tr[R:{row}]")
-    if selected is not None and selected.get("currentrow") == "true":
-        return
-    holder = soup.find(
-        "component", id=f"{table_prefix}_tbod_tdrow-tr[R:{row}]_holder"
-    )
-    if holder is not None and re.search(
-        r"setAttribute\(\s*['\"]currentrow['\"]\s*,\s*['\"]true['\"]\s*\)",
-        str(holder),
-    ):
-        return
-    raise MMISClientError("紀事清單未確認切換至指定資料列")
 
 
 class TemporaryRepairProcedureReader:
