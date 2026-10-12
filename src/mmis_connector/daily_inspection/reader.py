@@ -446,7 +446,7 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
         return {
             **basic_info,
             "success": True,
-            "query_name": "查詢日檢工單檢修記錄",
+            "query_name": "查詢日檢工單明細",
             "work_order": normalized_work_order,
             "count": len(records),
             "records": records,

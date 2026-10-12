@@ -10,7 +10,7 @@ from mmis_connector.daily_inspection.reader import (
     parse_daily_inspection_basic_info,
     parse_daily_inspection_linked_fault_notices,
 )
-from tools.mmis_development import query_daily_inspection_work_order_inspection_records as tool
+from tools.mmis_development import query_daily_inspection_work_order_details as tool
 
 
 STATE = PageState("session", 3, "csrf", "zz_pmwo1a", "https://example.test/app")
@@ -198,6 +198,7 @@ def test_reads_only_nonempty_remarks_and_uses_both_tabs(
 ) -> None:
     result, calls = _run(monkeypatch, _table(["", " 洩漏 ", "  ", "停用"]))
     assert calls == ["personnel-tab", "report-tab", "records-tab"]
+    assert result["query_name"] == "查詢日檢工單明細"
     assert result["count"] == 2
     assert result["records"] == [
         {"裝置名稱": "裝置1", "回報結果": "異常", "備註": "洩漏"},
@@ -484,7 +485,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
     payload = {
         **BASIC_VALUES,
         "success": True,
-        "query_name": "查詢日檢工單檢修記錄",
+        "query_name": "查詢日檢工單明細",
         "work_order": "115-1A-71815",
         "count": 1,
         "records": [
@@ -504,7 +505,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
 
     output = tool.execute(["115-1A-71815"])
     assert output == {
-        "query_name": "查詢日檢工單檢修記錄",
+        "query_name": "查詢日檢工單明細",
         "query_work_order_number": "115-1A-71815",
         "success": True,
         **BASIC_VALUES,

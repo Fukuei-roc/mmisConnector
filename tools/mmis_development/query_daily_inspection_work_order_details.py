@@ -11,7 +11,7 @@ from ._support import run_json_tool
 
 USAGE = (
     "python -m "
-    "tools.mmis_development.query_daily_inspection_work_order_inspection_records "
+    "tools.mmis_development.query_daily_inspection_work_order_details "
     "<工作單號>"
 )
 PERSONNEL_GROUPS = (
