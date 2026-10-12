@@ -22,9 +22,16 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     client = MMISSession(MMISConfig.from_env())
     result = DailyInspectionInspectionRecordReader(client).run(args[0])
     return {
-        "success": result["success"],
         "query_name": result["query_name"],
-        "work_order": result["work_order"],
+        "query_work_order_number": result["work_order"],
+        "success": result["success"],
+        "工作單": result["工作單"],
+        "車組/車號": result["車組/車號"],
+        "檢修日期": result["檢修日期"],
+        "車次": result["車次"],
+        "工作單狀態": result["工作單狀態"],
+        "開單人姓名": result["開單人姓名"],
+        "開單日期": result["開單日期"],
         "檢修記錄": {"count": result["count"], "records": result["records"]},
         "重要事項紀錄": result["important_notes"],
     }

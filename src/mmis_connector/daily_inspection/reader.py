@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession, PageState
@@ -31,6 +32,10 @@ IMPORTANT_NOTE_FIELDS = (
 )
 IMPORTANT_NOTE_SUMMARY = "紀事(備註)清單"
 WORK_ORDER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
+BASIC_INSPECTION_FIELDS = (
+    "工作單", "車組/車號", "檢修日期", "車次", "工作單狀態", "開單人姓名", "開單日期",
+)
+BASIC_INSPECTION_DATE_FIELDS = {"檢修日期", "開單日期"}
 
 
 def normalize_work_order(value: str) -> str:
@@ -38,6 +43,43 @@ def normalize_work_order(value: str) -> str:
     if not work_order or WORK_ORDER_RE.fullmatch(work_order) is None:
         raise MMISClientError("工作單號只能包含英數字與連字號")
     return work_order
+
+
+def parse_daily_inspection_basic_info(
+    response: str, *, expected_work_order: str
+) -> dict[str, str]:
+    """Read the seven visible fields from the opened 1A work order."""
+    _, soup = _parse_maximo_markup(response)
+    result: dict[str, str] = {}
+    for field in BASIC_INSPECTION_FIELDS:
+        values: list[str] = []
+        for label in soup.find_all("label", attrs={"for": True}):
+            if label.get_text(" ", strip=True).rstrip(":：").strip() != field:
+                continue
+            control = soup.find("input", id=str(label["for"]))
+            if control is None:
+                raise MMISClientError(f"日檢工單基本資料找不到「{field}」輸入框")
+            value = str(control.get("value", "")).strip()
+            if field in BASIC_INSPECTION_DATE_FIELDS and not value:
+                value = str(control.get("title", "")).strip()
+                if not value and control.get("dojovalue"):
+                    try:
+                        taipei = timezone(timedelta(hours=8))
+                        date = datetime.fromtimestamp(
+                            int(str(control["dojovalue"])) / 1000, taipei
+                        )
+                        value = date.strftime(
+                            "%Y/%m/%d %H:%M" if field == "開單日期" else "%Y/%m/%d"
+                        )
+                    except (ValueError, OverflowError, OSError) as exc:
+                        raise MMISClientError(f"日檢工單基本資料「{field}」日期無效") from exc
+            values.append(value)
+        if not values or len(set(values)) != 1:
+            raise MMISClientError(f"日檢工單基本資料「{field}」缺失或不一致")
+        result[field] = values[0]
+    if result["工作單"] != expected_work_order:
+        raise MMISClientError("日檢工單基本資料工作單與輸入不相符")
+    return result
 
 
 class DailyInspectionWorkOrderDetailReader:
@@ -247,6 +289,9 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
 
     def run(self, work_order: str) -> dict[str, Any]:
         normalized_work_order, detail_response = self.open_detail(work_order)
+        basic_info = parse_daily_inspection_basic_info(
+            detail_response, expected_work_order=normalized_work_order
+        )
         state = self.client.state
         if state is None:
             raise MMISClientError("日檢工單明細缺少頁面狀態")
@@ -329,6 +374,7 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             xhr_seq += 1
 
         return {
+            **basic_info,
             "success": True,
             "query_name": "查詢日檢工單檢修記錄",
             "work_order": normalized_work_order,

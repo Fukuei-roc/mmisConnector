@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-035",
+  "title": "日檢檢修記錄查詢新增七欄基本資料",
+  "content": "在既有日檢工單檢修記錄 JSON 頂部依序輸出 query_name、query_work_order_number、success 與七個基本資料欄位，維持找工單邏輯與原有群組。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-12",
+  "epic": "MMIS HTTP 日檢檢修記錄查詢",
+  "userStory": "查詢工單時同時取得基本資料",
+  "dependsOn": ["MMIS-023"],
+  "order": 35,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/task-cards/MMIS-035.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/verification/MMIS-035.md", "pr": ""},
+  "refs": ["src/mmis_connector/daily_inspection/reader.py", "tools/mmis_development/query_daily_inspection_work_order_inspection_records.py", "tests/test_daily_inspection_inspection_records.py"],
+  "evidence": {"commands": ["python -m pytest -q -ra", "python -m compileall -q src tools/mmis_development tests", "git diff --check", "python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-71815"], "findings": ["完整測試無失敗；26 個舊錄製測試跳過", "live 七欄與指定錄製相符，原有兩個群組各 1 筆", "找工單邏輯未修改"], "residual": "其他工單標籤變動時採安全錯誤。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-12", "text": "明確要求七欄置於 JSON 第一層，且只新增查詢內容，不修改找工單邏輯。"}, {"name": "專案使用者", "time": "2026-10-12", "text": "後續指定 query_name、查詢工作單號英文鍵、success 排在七欄之前。"}]
+}

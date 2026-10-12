@@ -5,7 +5,10 @@ from typing import Any
 import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
-from mmis_connector.daily_inspection.reader import DailyInspectionInspectionRecordReader
+from mmis_connector.daily_inspection.reader import (
+    DailyInspectionInspectionRecordReader,
+    parse_daily_inspection_basic_info,
+)
 from tools.mmis_development import query_daily_inspection_work_order_inspection_records as tool
 
 
@@ -15,6 +18,28 @@ RECORDED_DOM = Path(
     r"\2026-10-07_query-daily-inspection-work-order-details\dom"
     r"\2026-10-07T065114-823.html"
 )
+BASIC_RECORDED_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-12_query-daily-inspection-work-order-basic-information\dom"
+    r"\2026-10-12T054040-151.html"
+)
+BASIC_VALUES = {
+    "工作單": "115-1A-71815",
+    "車組/車號": "EMU937",
+    "檢修日期": "2026/10/06",
+    "車次": "1243",
+    "工作單狀態": "核簽中",
+    "開單人姓名": "系統管理人員",
+    "開單日期": "2026/09/26 01:15",
+}
+
+
+def _basic_info() -> str:
+    return "".join(
+        f'<label for="basic-{index}">{field}:</label>'
+        f'<input id="basic-{index}" value="{value}">'
+        for index, (field, value) in enumerate(BASIC_VALUES.items())
+    )
 
 
 def _tab(title: str, target: str) -> str:
@@ -89,7 +114,9 @@ def _run(monkeypatch: pytest.MonkeyPatch, response: str) -> tuple[dict[str, Any]
     monkeypatch.setattr(
         reader,
         "open_detail",
-        lambda number: ("115-1A-71815", _tab("檢修回報", "report-tab")),
+        lambda number: (
+            "115-1A-71815", _basic_info() + _tab("檢修回報", "report-tab")
+        ),
     )
     calls: list[str] = []
 
@@ -128,7 +155,9 @@ def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         reader,
         "open_detail",
-        lambda number: ("115-1A-71815", _tab("檢修回報", "report-tab")),
+        lambda number: (
+            "115-1A-71815", _basic_info() + _tab("檢修回報", "report-tab")
+        ),
     )
     responses = iter(
         [
@@ -221,6 +250,40 @@ def test_recorded_dom_yields_one_of_26_rows(monkeypatch: pytest.MonkeyPatch) -> 
     ]
 
 
+@pytest.mark.skipif(not BASIC_RECORDED_DOM.exists(), reason="本機未提供日檢基本資料錄製 DOM")
+def test_recorded_basic_information() -> None:
+    assert parse_daily_inspection_basic_info(
+        BASIC_RECORDED_DOM.read_text(encoding="utf-8"),
+        expected_work_order="115-1A-71815",
+    ) == BASIC_VALUES
+
+
+def test_basic_information_rejects_mismatch_and_conflicting_duplicate() -> None:
+    with pytest.raises(MMISClientError, match="工作單與輸入不相符"):
+        parse_daily_inspection_basic_info(_basic_info(), expected_work_order="115-1A-99999")
+    conflicting = (
+        _basic_info()
+        + '<label for="duplicate">車次:</label><input id="duplicate" value="9">'
+    )
+    with pytest.raises(MMISClientError, match="車次.*不一致"):
+        parse_daily_inspection_basic_info(conflicting, expected_work_order="115-1A-71815")
+
+
+def test_basic_information_formats_date_and_datetime_from_dojo_value() -> None:
+    html = _basic_info()
+    html = html.replace(
+        'id="basic-2" value="2026/10/06"',
+        'id="basic-2" value="" dojovalue="1791216000000"',
+    )
+    html = html.replace(
+        'id="basic-6" value="2026/09/26 01:15"',
+        'id="basic-6" value="" dojovalue="1790356547154"',
+    )
+    assert parse_daily_inspection_basic_info(
+        html, expected_work_order="115-1A-71815"
+    ) == BASIC_VALUES
+
+
 def test_tool_rejects_wrong_arg_count_before_loading_config() -> None:
     with pytest.raises(MMISClientError, match="用法"):
         tool.execute([])
@@ -230,9 +293,10 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = {
+        **BASIC_VALUES,
         "success": True,
         "query_name": "查詢日檢工單檢修記錄",
-        "work_order": "115-1A-10899",
+        "work_order": "115-1A-71815",
         "count": 1,
         "records": [
             {"裝置名稱": "列車自動防護系統", "回報結果": "異常", "備註": "排修"}
@@ -247,10 +311,16 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         lambda client: SimpleNamespace(run=lambda number: payload),
     )
 
-    assert tool.execute(["115-1A-10899"]) == {
-        "success": True,
+    output = tool.execute(["115-1A-71815"])
+    assert output == {
         "query_name": "查詢日檢工單檢修記錄",
-        "work_order": "115-1A-10899",
+        "query_work_order_number": "115-1A-71815",
+        "success": True,
+        **BASIC_VALUES,
         "檢修記錄": {"count": 1, "records": payload["records"]},
         "重要事項紀錄": {"count": 0, "records": []},
     }
+    assert list(output) == [
+        "query_name", "query_work_order_number", "success", *BASIC_VALUES,
+        "檢修記錄", "重要事項紀錄",
+    ]
