@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-036",
+  "title": "日檢檢修記錄查詢新增已勾稽故障通報",
+  "content": "在指定日檢檢修記錄 CLI 的開單日期後、檢修記錄前，輸出工單明細中故障通報管理四欄與 count/records。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-12",
+  "epic": "MMIS HTTP 日檢檢修記錄查詢",
+  "userStory": "查詢工單時同時取得已勾稽故障通報",
+  "dependsOn": ["MMIS-035"],
+  "order": 36,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/task-cards/MMIS-036.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/verification/MMIS-036.md", "pr": ""},
+  "refs": ["src/mmis_connector/daily_inspection/reader.py", "tools/mmis_development/query_daily_inspection_work_order_inspection_records.py", "tests/test_daily_inspection_inspection_records.py"],
+  "evidence": {"commands": ["python -m pytest tests/test_daily_inspection_inspection_records.py tests/test_read_daily_inspection_work_order.py tests/test_temporary_repair_procedure.py -q", "python -m pytest -q -ra", "python -m compileall -q src tools/mmis_development tests", "git diff --check", "python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-71815"], "findings": ["目標測試與完整測試無失敗", "錄製 DOM 解析為 1 筆 1151006-32", "live JSON 於指定順序輸出 1 筆已勾稽故障通報", "沿用既有明細回應，未新增 HTTP event"], "residual": "多頁通報仍採安全錯誤；部分歷史錄製測試因外部檔案缺失跳過。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-12", "text": "明確要求參考指定錄製與臨修工單，新增已勾稽故障通報並指定 JSON 順序。"}]
+}

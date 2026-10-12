@@ -82,6 +82,30 @@ def parse_daily_inspection_basic_info(
     return result
 
 
+def parse_daily_inspection_linked_fault_notices(response: str) -> dict[str, Any]:
+    """Read the linked fault notices already rendered in the work order detail."""
+    schema, records = parse_maximo_table(
+        response,
+        required_headers=FAULT_HEADERS,
+        table_summary=FAULT_TABLE_SUMMARY,
+        normalize_line_breaks=True,
+    )
+    if schema is None:
+        raise MMISClientError("查詢回應找不到故障通報管理表格")
+    if records:
+        page = parse_maximo_page_info(
+            response, table_prefix=schema.prefix, context_name=FAULT_TABLE_SUMMARY
+        )
+        if (
+            page.total != len(records)
+            or page.next_page_target is not None
+            or page.start != 1
+            or page.end != len(records)
+        ):
+            raise MMISClientError("故障通報管理結果超過單頁，拒絕回傳不完整資料")
+    return {"count": len(records), "records": records}
+
+
 class DailyInspectionWorkOrderDetailReader:
     """Read one 動力車日檢(1A) work order detail without a browser."""
 
@@ -172,35 +196,15 @@ class DailyInspectionWorkOrderDetailReader:
 
     def run(self, work_order: str) -> dict[str, Any]:
         normalized_work_order, detail_response = self.open_detail(work_order)
-        fault_schema, fault_notices = parse_maximo_table(
-            detail_response,
-            required_headers=FAULT_HEADERS,
-            table_summary=FAULT_TABLE_SUMMARY,
-            normalize_line_breaks=True,
-        )
-        if fault_schema is None:
-            raise MMISClientError("查詢回應找不到故障通報管理表格")
-        if fault_notices:
-            fault_page = parse_maximo_page_info(
-                detail_response,
-                table_prefix=fault_schema.prefix,
-                context_name=FAULT_TABLE_SUMMARY,
-            )
-            if (
-                fault_page.total != len(fault_notices)
-                or fault_page.next_page_target is not None
-            ):
-                raise MMISClientError(
-                    "故障通報管理結果超過單頁，拒絕回傳不完整資料"
-                )
+        linked = parse_daily_inspection_linked_fault_notices(detail_response)
 
         return {
             "success": True,
             "query_name": QUERY_NAME,
             "work_order": normalized_work_order,
-            "has_fault_notices": bool(fault_notices),
-            "count": len(fault_notices),
-            "records": fault_notices,
+            "has_fault_notices": bool(linked["count"]),
+            "count": linked["count"],
+            "records": linked["records"],
         }
 
 
@@ -292,6 +296,7 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
         basic_info = parse_daily_inspection_basic_info(
             detail_response, expected_work_order=normalized_work_order
         )
+        linked_fault_notices = parse_daily_inspection_linked_fault_notices(detail_response)
         state = self.client.state
         if state is None:
             raise MMISClientError("日檢工單明細缺少頁面狀態")
@@ -380,6 +385,7 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             "work_order": normalized_work_order,
             "count": len(records),
             "records": records,
+            "linked_fault_notices": linked_fault_notices,
             "important_notes": {
                 "count": len(important_notes), "records": important_notes,
             },

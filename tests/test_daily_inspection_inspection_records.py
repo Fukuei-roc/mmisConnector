@@ -8,6 +8,7 @@ from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.daily_inspection.reader import (
     DailyInspectionInspectionRecordReader,
     parse_daily_inspection_basic_info,
+    parse_daily_inspection_linked_fault_notices,
 )
 from tools.mmis_development import query_daily_inspection_work_order_inspection_records as tool
 
@@ -22,6 +23,11 @@ BASIC_RECORDED_DOM = Path(
     r"C:\Docker\maximoFlowRecorder\recordings"
     r"\2026-10-12_query-daily-inspection-work-order-basic-information\dom"
     r"\2026-10-12T054040-151.html"
+)
+FAULT_RECORDED_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-12_query-fault-notices-linked-to-daily-inspection-work-order\dom"
+    r"\2026-10-12T060626-365.html"
 )
 BASIC_VALUES = {
     "工作單": "115-1A-71815",
@@ -44,6 +50,25 @@ def _basic_info() -> str:
 
 def _tab(title: str, target: str) -> str:
     return f'<li ctype="tab" id="{target}"><a title="{title}">{title}</a></li>'
+
+
+def _fault_notices(*, count: int = 0, total: int | None = None) -> str:
+    headers = "".join(
+        f'<span id="fault_ttrow_[C:{index}]_ttitle-lb">{field}</span>'
+        for index, field in enumerate(("故障通報號", "發生日期", "車組/車號", "故障現象"))
+    )
+    rows = "".join(
+        f'<tr id="fault_tbod_tdrow-tr[R:{index}]">'
+        f'<td id="fault_tdrow_[C:0]-c[R:{index}]"><span title="1151006-32">1151006-32</span></td>'
+        f'<td id="fault_tdrow_[C:1]-c[R:{index}]"><span title="2026/10/06">2026/10/06</span></td>'
+        f'<td id="fault_tdrow_[C:2]-c[R:{index}]"><span title="EMU937">EMU937</span></td>'
+        f'<td id="fault_tdrow_[C:3]-c[R:{index}]"><span title="第一行">第一行</span></td>'
+        '</tr>'
+        for index in range(count)
+    )
+    total = count if total is None else total
+    page = f'<label id="fault-lb3" class="tCount">1 - {count}/{total}</label>' if count else ""
+    return f'{page}<table id="fault_tbod-tbd" summary="故障通報管理">{headers}{rows}</table>'
 
 
 NOTE_FIELDS = (
@@ -109,13 +134,16 @@ def _table(
     )
 
 
-def _run(monkeypatch: pytest.MonkeyPatch, response: str) -> tuple[dict[str, Any], list[str]]:
+def _run(
+    monkeypatch: pytest.MonkeyPatch, response: str, *, fault_count: int = 0
+) -> tuple[dict[str, Any], list[str]]:
     reader = DailyInspectionInspectionRecordReader(SimpleNamespace(state=STATE))
     monkeypatch.setattr(
         reader,
         "open_detail",
         lambda number: (
-            "115-1A-71815", _basic_info() + _tab("檢修回報", "report-tab")
+            "115-1A-71815", _basic_info() + _fault_notices(count=fault_count)
+            + _tab("檢修回報", "report-tab")
         ),
     )
     calls: list[str] = []
@@ -139,6 +167,7 @@ def test_reads_only_nonempty_remarks_and_uses_both_tabs(
         {"裝置名稱": "裝置3", "回報結果": "異常", "備註": "停用"},
     ]
     assert result["important_notes"] == {"count": 0, "records": []}
+    assert result["linked_fault_notices"] == {"count": 0, "records": []}
 
 
 def test_all_empty_remarks_are_successful_empty_result(
@@ -150,13 +179,28 @@ def test_all_empty_remarks_are_successful_empty_result(
     assert result["records"] == []
 
 
+def test_run_includes_linked_fault_notice_from_same_detail_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, calls = _run(monkeypatch, _table([]), fault_count=1)
+    assert result["linked_fault_notices"] == {
+        "count": 1,
+        "records": [{
+            "故障通報號": "1151006-32", "發生日期": "2026/10/06",
+            "車組/車號": "EMU937", "故障現象": "第一行",
+        }],
+    }
+    assert calls == ["report-tab", "records-tab"]
+
+
 def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -> None:
     reader = DailyInspectionInspectionRecordReader(SimpleNamespace(state=STATE))
     monkeypatch.setattr(
         reader,
         "open_detail",
         lambda number: (
-            "115-1A-71815", _basic_info() + _tab("檢修回報", "report-tab")
+            "115-1A-71815", _basic_info() + _fault_notices()
+            + _tab("檢修回報", "report-tab")
         ),
     )
     responses = iter(
@@ -258,6 +302,21 @@ def test_recorded_basic_information() -> None:
     ) == BASIC_VALUES
 
 
+@pytest.mark.skipif(not FAULT_RECORDED_DOM.exists(), reason="本機未提供勾稽通報錄製 DOM")
+def test_recorded_linked_fault_notice() -> None:
+    linked = parse_daily_inspection_linked_fault_notices(
+        FAULT_RECORDED_DOM.read_text(encoding="utf-8")
+    )
+    assert linked["count"] == 1
+    assert linked["records"][0]["故障通報號"] == "1151006-32"
+    assert set(linked["records"][0]) == {"故障通報號", "發生日期", "車組/車號", "故障現象"}
+
+
+def test_linked_fault_notice_rejects_incomplete_page() -> None:
+    with pytest.raises(MMISClientError, match="不完整資料"):
+        parse_daily_inspection_linked_fault_notices(_fault_notices(count=1, total=2))
+
+
 def test_basic_information_rejects_mismatch_and_conflicting_duplicate() -> None:
     with pytest.raises(MMISClientError, match="工作單與輸入不相符"):
         parse_daily_inspection_basic_info(_basic_info(), expected_work_order="115-1A-99999")
@@ -302,6 +361,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
             {"裝置名稱": "列車自動防護系統", "回報結果": "異常", "備註": "排修"}
         ],
         "important_notes": {"count": 0, "records": []},
+        "linked_fault_notices": {"count": 1, "records": [{"故障通報號": "1151006-32"}]},
     }
     monkeypatch.setattr(tool, "MMISConfig", SimpleNamespace(from_env=lambda: object()))
     monkeypatch.setattr(tool, "MMISSession", lambda config: object())
@@ -317,10 +377,11 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         "query_work_order_number": "115-1A-71815",
         "success": True,
         **BASIC_VALUES,
+        "已勾稽故障通報": payload["linked_fault_notices"],
         "檢修記錄": {"count": 1, "records": payload["records"]},
         "重要事項紀錄": {"count": 0, "records": []},
     }
     assert list(output) == [
         "query_name", "query_work_order_number", "success", *BASIC_VALUES,
-        "檢修記錄", "重要事項紀錄",
+        "已勾稽故障通報", "檢修記錄", "重要事項紀錄",
     ]
