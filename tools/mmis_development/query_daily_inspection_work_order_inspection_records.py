@@ -14,6 +14,27 @@ USAGE = (
     "tools.mmis_development.query_daily_inspection_work_order_inspection_records "
     "<工作單號>"
 )
+PERSONNEL_GROUPS = (
+    ("檢查室（檢查員）", "檢查室", "檢查員"),
+    ("檢查室（技術人員）", "檢查室", "修繕人員"),
+    ("檢車室（檢查員）", "檢車室", "檢查員"),
+    ("檢車室（技術人員）", "檢車室", "修繕人員"),
+)
+
+
+def group_maintenance_personnel(personnel: dict[str, Any]) -> dict[str, Any]:
+    grouped: dict[str, Any] = {}
+    for title, group, role in PERSONNEL_GROUPS:
+        records = sorted(
+            (
+                {"員工代號": row["員工代號"], "姓名": row["姓名"]}
+                for row in personnel["records"]
+                if row["人員群組"] == group and row["工作角色"] == role
+            ),
+            key=lambda row: row["姓名"],
+        )
+        grouped[title] = {"count": len(records), "records": records}
+    return grouped
 
 
 def execute(args: Sequence[str]) -> dict[str, Any]:
@@ -35,6 +56,7 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
         "已勾稽故障通報": result["linked_fault_notices"],
         "檢修記錄": {"count": result["count"], "records": result["records"]},
         "重要事項紀錄": result["important_notes"],
+        "檢修人員": group_maintenance_personnel(result["maintenance_personnel"]),
     }
 
 

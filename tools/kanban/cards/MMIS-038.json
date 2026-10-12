@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-038",
+  "title": "檢修人員新增四個分類子項目",
+  "content": "檢修人員最終 JSON 只顯示四個分類子項目，不顯示外層 count／records；各組依姓名排序且只含員工代號與姓名。",
+  "stage": "done",
+  "risk": "low",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-12",
+  "epic": "MMIS HTTP 日檢檢修記錄查詢",
+  "userStory": "依人員群組與工作角色檢視檢修人員",
+  "dependsOn": ["MMIS-037"],
+  "order": 38,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/task-cards/MMIS-038.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/verification/MMIS-038.md", "pr": ""},
+  "refs": ["tools/mmis_development/query_daily_inspection_work_order_inspection_records.py", "tests/test_daily_inspection_inspection_records.py"],
+  "evidence": {"commands": ["python -m pytest tests/test_daily_inspection_inspection_records.py -q", "python -m pytest -q -ra", "python -m compileall -q src tools/mmis_development tests", "git diff --check", "python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-71815"], "findings": ["live 四組筆數依序為 2、2、1、2", "分類只含員工代號與姓名且依姓名排序", "檢修人員最終 JSON 只含四個子項目", "完整測試與編譯無失敗"], "residual": "姓名依 Python 字串順序；部分歷史外部錄製測試因缺檔跳過。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-12", "text": "明確指定四個分類的群組、角色、欄位與姓名排序。"}, {"name": "專案使用者", "time": "2026-10-12", "text": "依實際輸出修正：檢修人員下方不需重複顯示原始 count 與完整 records。"}]
+}

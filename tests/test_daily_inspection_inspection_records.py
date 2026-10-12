@@ -29,6 +29,11 @@ FAULT_RECORDED_DOM = Path(
     r"\2026-10-12_query-fault-notices-linked-to-daily-inspection-work-order\dom"
     r"\2026-10-12T060626-365.html"
 )
+PERSONNEL_RECORDED_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-12_query-daily-inspection-work-order-maintenance-personnel-list\dom"
+    r"\2026-10-12T063348-932.html"
+)
 BASIC_VALUES = {
     "工作單": "115-1A-71815",
     "車組/車號": "EMU937",
@@ -75,6 +80,34 @@ NOTE_FIELDS = (
     "車組/車號", "故障類別", "故障類別說明", "故障現象", "故障原因",
     "處置措施", "材料編號(PA)", "員工代號", "人員姓名",
 )
+PERSONNEL_FIELDS = ("人員群組", "工作角色", "員工代號", "姓名", "單位")
+
+
+def _personnel(rows: list[tuple[str, ...]], *, start: int = 1,
+               total: int | None = None, next_page: bool = False) -> str:
+    total = len(rows) if total is None else total
+    count = f"{start} - {start + len(rows) - 1}/{total}" if rows else "0 - 0/0"
+    headers = "".join(
+        f'<span id="person_ttrow_[C:{index}]_ttitle-lb">{field}</span>'
+        for index, field in enumerate(PERSONNEL_FIELDS)
+    )
+    body = "".join(
+        f'<tr id="person_tbod_tdrow-tr[R:{row_index}]">'
+        + "".join(
+            f'<td id="person_tdrow_[C:{index}]-c[R:{row_index}]">'
+            f'<input id="person_tdrow_[C:{index}]_txt-tb[R:{row_index}]" value="{value}"></td>'
+            for index, value in enumerate(values)
+        ) + "</tr>"
+        for row_index, values in enumerate(rows)
+    )
+    next_button = (
+        '<a id="person-ti7"><img id="person-ti7_img" src="tablebtn_next_on.gif"></a>'
+        if next_page else ""
+    )
+    return (
+        f'<label class="tCount" id="person-lb3">{count}</label>{next_button}'
+        f'<table id="person_tbod-tbd" summary="檢修人員">{headers}{body}</table>'
+    )
 
 
 def _notes(rows: list[tuple[str, ...]], *, start: int = 1,
@@ -143,14 +176,18 @@ def _run(
         "open_detail",
         lambda number: (
             "115-1A-71815", _basic_info() + _fault_notices(count=fault_count)
-            + _tab("檢修回報", "report-tab")
+            + _tab("檢修回報", "report-tab") + _tab("檢修人員(單位)", "personnel-tab")
         ),
     )
     calls: list[str] = []
 
     def post_event(**kwargs: Any) -> str:
         calls.append(kwargs["target_id"])
-        return (_tab("檢修記錄", "records-tab") + _notes([])) if len(calls) == 1 else response
+        if len(calls) == 1:
+            return _personnel([])
+        if len(calls) == 2:
+            return _tab("檢修記錄", "records-tab") + _notes([])
+        return response
 
     monkeypatch.setattr(reader, "_post_event", post_event)
     return reader.run("115-1A-71815"), calls
@@ -160,7 +197,7 @@ def test_reads_only_nonempty_remarks_and_uses_both_tabs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     result, calls = _run(monkeypatch, _table(["", " 洩漏 ", "  ", "停用"]))
-    assert calls == ["report-tab", "records-tab"]
+    assert calls == ["personnel-tab", "report-tab", "records-tab"]
     assert result["count"] == 2
     assert result["records"] == [
         {"裝置名稱": "裝置1", "回報結果": "異常", "備註": "洩漏"},
@@ -190,7 +227,7 @@ def test_run_includes_linked_fault_notice_from_same_detail_response(
             "車組/車號": "EMU937", "故障現象": "第一行",
         }],
     }
-    assert calls == ["report-tab", "records-tab"]
+    assert calls == ["personnel-tab", "report-tab", "records-tab"]
 
 
 def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -200,11 +237,12 @@ def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -
         "open_detail",
         lambda number: (
             "115-1A-71815", _basic_info() + _fault_notices()
-            + _tab("檢修回報", "report-tab")
+            + _tab("檢修回報", "report-tab") + _tab("檢修人員(單位)", "personnel-tab")
         ),
     )
     responses = iter(
         [
+            _personnel([]),
             _tab("檢修記錄", "records-tab") + _notes([]),
             _table(["第一頁"], total=2, next_page=True),
             _table(["第二頁"], start=2, total=2),
@@ -218,7 +256,7 @@ def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(reader, "_post_event", post_event)
     result = reader.run("115-1A-71815")
-    assert targets == ["report-tab", "records-tab", "work-ti7"]
+    assert targets == ["personnel-tab", "report-tab", "records-tab", "work-ti7"]
     assert [record["備註"] for record in result["records"]] == ["第一頁", "第二頁"]
 
 
@@ -226,6 +264,7 @@ def test_empty_source_table_is_successful(monkeypatch: pytest.MonkeyPatch) -> No
     result, _ = _run(monkeypatch, _table([]))
     assert result["count"] == 0
     assert result["records"] == []
+    assert result["maintenance_personnel"] == {"count": 0, "records": []}
 
 
 def test_important_notes_read_nine_fields_and_all_pages(
@@ -317,6 +356,53 @@ def test_linked_fault_notice_rejects_incomplete_page() -> None:
         parse_daily_inspection_linked_fault_notices(_fault_notices(count=1, total=2))
 
 
+@pytest.mark.skipif(not PERSONNEL_RECORDED_DOM.exists(), reason="本機未提供檢修人員錄製 DOM")
+def test_recorded_maintenance_personnel_has_seven_rows() -> None:
+    reader = DailyInspectionInspectionRecordReader(SimpleNamespace(state=STATE))
+    result, _ = reader._read_maintenance_personnel(
+        PERSONNEL_RECORDED_DOM.read_text(encoding="utf-8"), state=STATE, xhr_seq=9
+    )
+    assert result["count"] == 7
+    assert len(result["records"]) == 7
+    assert all(tuple(row) == PERSONNEL_FIELDS for row in result["records"])
+    assert all(row["員工代號"] for row in result["records"])
+
+
+def test_maintenance_personnel_reads_all_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    reader = DailyInspectionInspectionRecordReader(SimpleNamespace(state=STATE))
+    first = ("檢查室", "檢修人員", "E1", "甲", "新竹機務段")
+    second = ("檢查室", "檢修人員", "E2", "乙", "新竹機務段")
+    targets: list[str] = []
+
+    def post_event(**kwargs: Any) -> str:
+        targets.append(kwargs["target_id"])
+        return _personnel([second], start=2, total=2)
+
+    monkeypatch.setattr(reader, "_post_event", post_event)
+    result, next_seq = reader._read_maintenance_personnel(
+        _personnel([first], total=2, next_page=True), state=STATE, xhr_seq=9
+    )
+    assert result == {
+        "count": 2,
+        "records": [
+            dict(zip(PERSONNEL_FIELDS, first)),
+            dict(zip(PERSONNEL_FIELDS, second)),
+        ],
+    }
+    assert targets == ["person-ti7"]
+    assert next_seq == 10
+
+
+@pytest.mark.parametrize(
+    "response",
+    ["<div>缺少表格</div>", _personnel([("A", "B", "C", "D", "E")], total=2)],
+)
+def test_maintenance_personnel_rejects_missing_or_incomplete_table(response: str) -> None:
+    reader = DailyInspectionInspectionRecordReader(SimpleNamespace(state=STATE))
+    with pytest.raises(MMISClientError):
+        reader._read_maintenance_personnel(response, state=STATE, xhr_seq=9)
+
+
 def test_basic_information_rejects_mismatch_and_conflicting_duplicate() -> None:
     with pytest.raises(MMISClientError, match="工作單與輸入不相符"):
         parse_daily_inspection_basic_info(_basic_info(), expected_work_order="115-1A-99999")
@@ -348,6 +434,50 @@ def test_tool_rejects_wrong_arg_count_before_loading_config() -> None:
         tool.execute([])
 
 
+def test_groups_maintenance_personnel_by_group_and_role_sorted_by_name() -> None:
+    rows = [
+        {"人員群組": group, "工作角色": role, "員工代號": code,
+         "姓名": name, "單位": "新竹機務段"}
+        for group, role, code, name in [
+            ("檢查室", "檢查員", "E2", "乙"),
+            ("檢車室", "修繕人員", "E5", "戊"),
+            ("檢查室", "修繕人員", "E3", "丙"),
+            ("檢車室", "檢查員", "E4", "丁"),
+            ("檢查室", "檢查員", "E1", "甲"),
+            ("檢車室", "修繕人員", "E6", "己"),
+            ("其他", "檢查員", "E7", "庚"),
+        ]
+    ]
+    original = {"count": 7, "records": rows}
+    result = tool.group_maintenance_personnel(original)
+    assert list(result) == [
+        "檢查室（檢查員）", "檢查室（技術人員）",
+        "檢車室（檢查員）", "檢車室（技術人員）",
+    ]
+    assert original == {"count": 7, "records": rows}
+    assert result["檢查室（檢查員）"] == {
+        "count": 2,
+        "records": [{"員工代號": "E2", "姓名": "乙"}, {"員工代號": "E1", "姓名": "甲"}],
+    }
+    assert result["檢查室（技術人員）"] == {
+        "count": 1, "records": [{"員工代號": "E3", "姓名": "丙"}],
+    }
+    assert result["檢車室（檢查員）"] == {
+        "count": 1, "records": [{"員工代號": "E4", "姓名": "丁"}],
+    }
+    assert result["檢車室（技術人員）"] == {
+        "count": 2,
+        "records": [{"員工代號": "E6", "姓名": "己"}, {"員工代號": "E5", "姓名": "戊"}],
+    }
+
+
+def test_groups_maintenance_personnel_with_no_matching_rows() -> None:
+    result = tool.group_maintenance_personnel({"count": 0, "records": []})
+    assert list(result) == [title for title, _, _ in tool.PERSONNEL_GROUPS]
+    assert all(result[title] == {"count": 0, "records": []}
+               for title, _, _ in tool.PERSONNEL_GROUPS)
+
+
 def test_tool_nests_only_count_and_records_under_inspection_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -362,6 +492,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         ],
         "important_notes": {"count": 0, "records": []},
         "linked_fault_notices": {"count": 1, "records": [{"故障通報號": "1151006-32"}]},
+        "maintenance_personnel": {"count": 0, "records": []},
     }
     monkeypatch.setattr(tool, "MMISConfig", SimpleNamespace(from_env=lambda: object()))
     monkeypatch.setattr(tool, "MMISSession", lambda config: object())
@@ -380,8 +511,14 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         "已勾稽故障通報": payload["linked_fault_notices"],
         "檢修記錄": {"count": 1, "records": payload["records"]},
         "重要事項紀錄": {"count": 0, "records": []},
+        "檢修人員": {
+            **{
+                title: {"count": 0, "records": []}
+                for title, _, _ in tool.PERSONNEL_GROUPS
+            },
+        },
     }
     assert list(output) == [
         "query_name", "query_work_order_number", "success", *BASIC_VALUES,
-        "已勾稽故障通報", "檢修記錄", "重要事項紀錄",
+        "已勾稽故障通報", "檢修記錄", "重要事項紀錄", "檢修人員",
     ]

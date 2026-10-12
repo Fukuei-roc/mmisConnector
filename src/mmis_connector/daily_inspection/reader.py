@@ -31,6 +31,8 @@ IMPORTANT_NOTE_FIELDS = (
     "處置措施", "材料編號(PA)", "員工代號", "人員姓名",
 )
 IMPORTANT_NOTE_SUMMARY = "紀事(備註)清單"
+MAINTENANCE_PERSONNEL_SUMMARY = "檢修人員"
+MAINTENANCE_PERSONNEL_FIELDS = ("人員群組", "工作角色", "員工代號", "姓名", "單位")
 WORK_ORDER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 BASIC_INSPECTION_FIELDS = (
     "工作單", "車組/車號", "檢修日期", "車次", "工作單狀態", "開單人姓名", "開單日期",
@@ -211,6 +213,55 @@ class DailyInspectionWorkOrderDetailReader:
 class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader):
     """Read inspection-record rows with nonempty remarks from one 1A work order."""
 
+    def _read_maintenance_personnel(
+        self, response: str, *, state: PageState, xhr_seq: int
+    ) -> tuple[dict[str, Any], int]:
+        records: list[dict[str, str]] = []
+        expected_start = 1
+        expected_total: int | None = None
+        while True:
+            schema, rows = parse_maximo_table(
+                response,
+                required_headers=set(MAINTENANCE_PERSONNEL_FIELDS),
+                table_summary=MAINTENANCE_PERSONNEL_SUMMARY,
+            )
+            if schema is None:
+                raise MMISClientError("檢修人員缺少表格")
+            page = parse_maximo_page_info(
+                response, table_prefix=schema.prefix, context_name=MAINTENANCE_PERSONNEL_SUMMARY
+            )
+            if expected_total is None:
+                expected_total = page.total
+            if page.total != expected_total:
+                raise MMISClientError("檢修人員分頁總筆數不一致")
+            if page.total == 0:
+                if rows or page.start != 0 or page.end != 0 or page.next_page_target:
+                    raise MMISClientError("檢修人員空頁與表格資料不一致")
+                break
+            if page.start != expected_start or page.end - page.start + 1 != len(rows):
+                raise MMISClientError("檢修人員分頁範圍與資料不一致")
+            records.extend(
+                {field: str(row[field]).strip() for field in MAINTENANCE_PERSONNEL_FIELDS}
+                for row in rows
+            )
+            if page.end == page.total:
+                if page.next_page_target is not None:
+                    raise MMISClientError("檢修人員末頁仍有下一頁")
+                break
+            if page.next_page_target is None:
+                raise MMISClientError("檢修人員尚未讀完但找不到下一頁")
+            expected_start = page.end + 1
+            response = self._post_event(
+                state=self.client.state or state,
+                current_focus=page.next_page_target,
+                event_type="click",
+                target_id=page.next_page_target,
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+        return {"count": len(records), "records": records}, xhr_seq
+
     def _read_important_notes(
         self, response: str, *, state: PageState, xhr_seq: int
     ) -> tuple[list[dict[str, str]], int]:
@@ -300,6 +351,20 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
         state = self.client.state
         if state is None:
             raise MMISClientError("日檢工單明細缺少頁面狀態")
+        personnel_tab = parse_maximo_tab_target(
+            detail_response, title="檢修人員(單位)"
+        )
+        personnel_response = self._post_event(
+            state=self.client.state or state,
+            current_focus=personnel_tab,
+            event_type="click",
+            target_id=personnel_tab,
+            value="",
+            xhr_seq=6,
+        )
+        maintenance_personnel, xhr_seq = self._read_maintenance_personnel(
+            personnel_response, state=state, xhr_seq=7
+        )
         report_tab = parse_maximo_tab_target(detail_response, title="檢修回報")
         report_response = self._post_event(
             state=self.client.state or state,
@@ -307,10 +372,10 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             event_type="click",
             target_id=report_tab,
             value="",
-            xhr_seq=6,
+            xhr_seq=xhr_seq,
         )
         important_notes, xhr_seq = self._read_important_notes(
-            report_response, state=state, xhr_seq=7
+            report_response, state=state, xhr_seq=xhr_seq + 1
         )
         record_tab = parse_maximo_tab_target(report_response, title="檢修記錄")
         response = self._post_event(
@@ -389,4 +454,5 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             "important_notes": {
                 "count": len(important_notes), "records": important_notes,
             },
+            "maintenance_personnel": maintenance_personnel,
         }

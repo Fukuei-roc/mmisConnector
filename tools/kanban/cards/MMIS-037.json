@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-037",
+  "title": "日檢檢修記錄查詢新增檢修人員",
+  "content": "在指定日檢工單 CLI JSON 最下方新增檢修人員五欄與 count/records，讀完所有分頁。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-12",
+  "epic": "MMIS HTTP 日檢檢修記錄查詢",
+  "userStory": "查詢日檢工單時顯示檢修人員名單",
+  "dependsOn": ["MMIS-036"],
+  "order": 37,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/task-cards/MMIS-037.md", "verificationReport": "ai/artifacts/MMIS HTTP 日檢檢修記錄查詢/verification/MMIS-037.md", "pr": ""},
+  "refs": ["src/mmis_connector/daily_inspection/reader.py", "tools/mmis_development/query_daily_inspection_work_order_inspection_records.py", "tests/test_daily_inspection_inspection_records.py"],
+  "evidence": {"commands": ["python -m pytest tests/test_daily_inspection_inspection_records.py -q", "python -m pytest -q -ra", "python -m compileall -q src tools/mmis_development tests", "git diff --check", "python -m tools.mmis_development.query_daily_inspection_work_order_inspection_records 115-1A-71815"], "findings": ["錄製 DOM 與 live 查詢皆得五欄 7 筆", "新群組位於 JSON 最下方", "完整測試與編譯無失敗", "先讀人員頁籤可取得完整表格，再讀原有群組"], "residual": "多頁與空表尚無 live 工單證據；歷史外部錄製缺檔測試跳過。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-12", "text": "明確要求參考指定錄製，輸出檢修人員五欄、7 筆並置於 JSON 最下方。"}]
+}
