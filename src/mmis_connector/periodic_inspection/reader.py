@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..auth import MMISClientError, MMISSession
+from ..auth import MMISClientError, MMISSession, PageState
 from ..daily_inspection.reader import normalize_work_order
 from ..events import MaximoEventClient
 from ..parser import (
     _parse_maximo_markup,
+    MaximoTableSchema,
     parse_maximo_page_info,
     parse_maximo_tab_target,
     parse_maximo_table,
@@ -26,6 +27,57 @@ class PeriodicInspectionWorkOrderDetailReader:
         self.client = client
         self.events = MaximoEventClient(client)
 
+    def _filter_work_order(
+        self, *, state: PageState, response: str, number: str, xhr_seq: int
+    ) -> tuple[str, int]:
+        schema = parse_maximo_table_schema(response, required_headers=LIST_HEADERS)
+        work_column = next(
+            column for column, label in schema.headers.items() if label == "工作單"
+        )
+        work_input = f"{schema.prefix}_tfrow_[C:{work_column}]_txt-tb"
+        self.events.post(
+            state=self.client.state or state,
+            current_focus=work_input,
+            event_type="setvalue",
+            target_id=work_input,
+            value=number,
+            xhr_seq=xhr_seq,
+        )
+        filtered = self.events.post(
+            state=self.client.state or state,
+            current_focus=work_input,
+            event_type="filterrows",
+            target_id=f"{schema.prefix}_tbod_tfrow-tr",
+            value="",
+            xhr_seq=xhr_seq + 1,
+        )
+        return filtered, xhr_seq + 2
+
+    @staticmethod
+    def _exact_filtered_row(
+        response: str, *, number: str
+    ) -> tuple[MaximoTableSchema, dict[str, Any]] | None:
+        schema = parse_maximo_table_schema(response, required_headers=LIST_HEADERS)
+        result_schema, rows = parse_maximo_table(
+            response, required_headers=LIST_HEADERS
+        )
+        page = parse_maximo_page_info(
+            response, table_prefix=schema.prefix, context_name="定期檢修工單"
+        )
+        if page.total == 0:
+            if rows or page.start != 0 or page.end != 0 or page.next_page_target:
+                raise MMISClientError("定期檢修工單零筆結果與表格資料不一致")
+            return None
+        if result_schema is None or result_schema.prefix != schema.prefix:
+            raise MMISClientError("定期檢修工單查詢結果缺少表格")
+        if (
+            page.total != 1 or page.start != 1 or page.end != 1
+            or page.next_page_target is not None or len(rows) != 1
+            or rows[0]["工作單"] != number
+        ):
+            raise MMISClientError("工作單查詢結果不是唯一且完全相符的一筆")
+        return schema, rows[0]
+
     def run(self, work_order: str) -> dict[str, Any]:
         number = normalize_work_order(work_order)
         state, response = self.events.load_app_with_response(
@@ -34,59 +86,38 @@ class PeriodicInspectionWorkOrderDetailReader:
             expected_app_id="zz_pmwo",
             display_name="定期檢修工單",
         )
-        menu = self.events.post(
-            state=self.client.state or state,
-            current_focus="toolbar2_tbs_0_tbcb_0_query-tb",
-            event_type="click",
-            target_id="toolbar2_tbs_0_tbcb_0_query-img",
-            value="",
-            xhr_seq=1,
+        response, xhr_seq = self._filter_work_order(
+            state=state, response=response, number=number, xhr_seq=1
         )
-        if "mainrec_menus" not in menu:
-            raise MMISClientError("MMIS 未回傳定期檢修工單查詢選單")
-        response = self.events.post(
-            state=self.client.state or state,
-            current_focus="menu0_useAllRecsQuery_OPTION_a",
-            event_type="click",
-            target_id="mainrec_menus",
-            value="useAllRecsQuery_OPTION",
-            xhr_seq=2,
-        )
-        schema = parse_maximo_table_schema(response, required_headers=LIST_HEADERS)
-        columns = {label: index for index, label in schema.headers.items()}
-        work_input = f"{schema.prefix}_tfrow_[C:{columns['工作單']}]_txt-tb"
-        self.events.post(
-            state=self.client.state or state,
-            current_focus=work_input,
-            event_type="setvalue",
-            target_id=work_input,
-            value=number,
-            xhr_seq=3,
-        )
-        response = self.events.post(
-            state=self.client.state or state,
-            current_focus=work_input,
-            event_type="filterrows",
-            target_id=f"{schema.prefix}_tbod_tfrow-tr",
-            value="",
-            xhr_seq=4,
-        )
-        result_schema, rows = parse_maximo_table(
-            response, required_headers=LIST_HEADERS
-        )
-        if result_schema is None:
-            raise MMISClientError(f"找不到工作單：{number}")
-        page = parse_maximo_page_info(
-            response, table_prefix=result_schema.prefix, context_name="定期檢修工單"
-        )
-        if page.total == 0 and not rows:
-            raise MMISClientError(f"找不到工作單：{number}")
-        if (
-            page.total != 1 or page.start != 1 or page.end != 1
-            or page.next_page_target is not None or len(rows) != 1
-            or rows[0]["工作單"] != number
-        ):
-            raise MMISClientError("工作單查詢結果不是唯一且完全相符的一筆")
+        found = self._exact_filtered_row(response, number=number)
+        if found is None:
+            menu = self.events.post(
+                state=self.client.state or state,
+                current_focus="toolbar2_tbs_0_tbcb_0_query-tb",
+                event_type="click",
+                target_id="toolbar2_tbs_0_tbcb_0_query-img",
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+            if "mainrec_menus" not in menu:
+                raise MMISClientError("MMIS 未回傳定期檢修工單查詢選單")
+            response = self.events.post(
+                state=self.client.state or state,
+                current_focus="menu0_useAllRecsQuery_OPTION_a",
+                event_type="click",
+                target_id="mainrec_menus",
+                value="useAllRecsQuery_OPTION",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+            response, xhr_seq = self._filter_work_order(
+                state=state, response=response, number=number, xhr_seq=xhr_seq
+            )
+            found = self._exact_filtered_row(response, number=number)
+            if found is None:
+                raise MMISClientError(f"找不到工作單：{number}")
+        result_schema, _ = found
         work_column = next(
             column for column, label in result_schema.headers.items()
             if label == "工作單"
@@ -100,8 +131,9 @@ class PeriodicInspectionWorkOrderDetailReader:
             event_type="click",
             target_id=detail_target,
             value="",
-            xhr_seq=5,
+            xhr_seq=xhr_seq,
         )
+        xhr_seq += 1
         _, soup = _parse_maximo_markup(detail)
         detail_numbers = {
             str(soup.find(id=str(label["for"])).get("value", "")).strip()
@@ -118,8 +150,9 @@ class PeriodicInspectionWorkOrderDetailReader:
             event_type="click",
             target_id=report_tab,
             value="",
-            xhr_seq=6,
+            xhr_seq=xhr_seq,
         )
+        xhr_seq += 1
         record_tab = parse_maximo_tab_target(report, title="檢修記錄")
         response = self.events.post(
             state=self.client.state or state,
@@ -127,12 +160,12 @@ class PeriodicInspectionWorkOrderDetailReader:
             event_type="click",
             target_id=record_tab,
             value="",
-            xhr_seq=7,
+            xhr_seq=xhr_seq,
         )
+        xhr_seq += 1
         records: list[dict[str, str]] = []
         expected_start = 1
         expected_total: int | None = None
-        xhr_seq = 8
         while True:
             schema = parse_maximo_table_schema(
                 response, required_headers=RECORD_HEADERS

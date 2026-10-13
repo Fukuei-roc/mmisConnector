@@ -22,14 +22,19 @@ RECORDED_DOM = Path(
 STATE = PageState("session", 2, "csrf", "zz_pmwo", "https://example.test/app")
 
 
-def _list_result(number: str) -> str:
-    return (
-        '<label id="list-lb3" class="tCount">1 - 1/1</label>'
-        '<table id="list_tbod-tbd" summary="工作單">'
-        '<span id="list_ttrow_[C:5]_ttitle-lb">工作單</span>'
+def _list_result(number: str | None) -> str:
+    count = "1 - 1/1" if number else "0 - 0/0"
+    rows = (
         '<tr id="list_tbod_tdrow-tr[R:0]">'
         f'<td id="list_tdrow_[C:5]-c[R:0]"><span title="{number}">{number}</span></td>'
-        '</tr></table>'
+        '</tr>'
+        if number else '<tr><td>沒有要顯示的列</td></tr>'
+    )
+    return (
+        f'<label id="list-lb3" class="tCount">{count}</label>'
+        '<table id="list_tbod-tbd" summary="工作單">'
+        '<span id="list_ttrow_[C:5]_ttitle-lb">工作單</span>'
+        f'{rows}</table>'
     )
 
 
@@ -63,10 +68,15 @@ def _record_page(
     )
 
 
-def _run_pages(pages: list[str]) -> tuple[dict, list[tuple[str, str]]]:
+def _run_pages(
+    pages: list[str], *, default_found: bool = True, fallback_found: bool = True,
+    default_response: str | None = None,
+) -> tuple[dict, list[tuple[str, str]]]:
     number = "115-2A-69254-001"
     reader = PeriodicInspectionWorkOrderDetailReader(SimpleNamespace(state=STATE))
     calls: list[tuple[str, str]] = []
+    filter_attempts = 0
+    record_pages = 0
 
     class FakeEvents:
         def load_app_with_response(self, **kwargs):
@@ -74,27 +84,37 @@ def _run_pages(pages: list[str]) -> tuple[dict, list[tuple[str, str]]]:
             return STATE, _list_result(number)
 
         def post(self, **kwargs):
+            nonlocal filter_attempts, record_pages
             calls.append((kwargs["event_type"], kwargs["target_id"]))
-            sequence = len(calls)
-            if sequence == 1:
-                return '<div id="mainrec_menus"></div>'
-            if sequence == 2:
-                return _list_result(number)
-            if sequence == 3:
+            event_type, target_id = calls[-1]
+            if event_type == "setvalue":
                 assert kwargs["value"] == number
                 return ""
-            if sequence == 4:
+            if event_type == "filterrows":
+                filter_attempts += 1
+                if filter_attempts == 1 and default_response is not None:
+                    return default_response
+                found = default_found if filter_attempts == 1 else fallback_found
+                return _list_result(number if found else None)
+            if target_id == "toolbar2_tbs_0_tbcb_0_query-img":
+                return '<div id="mainrec_menus"></div>'
+            if target_id == "mainrec_menus":
+                assert kwargs["value"] == "useAllRecsQuery_OPTION"
                 return _list_result(number)
-            if sequence == 5:
+            if target_id == "list_tdrow_[C:5]_ttxt-lb[R:0]":
                 return (
                     '<label for="order-tb">工作單:</label>'
                     f'<input id="order-tb" value="{number}">'
                     '<li id="report-tab" ctype="tab">'
                     '<a title="檢修回報"></a></li>'
                 )
-            if sequence == 6:
+            if target_id == "report-tab":
                 return '<li id="record-tab" ctype="tab"><a title="檢修記錄"></a></li>'
-            return pages[sequence - 7]
+            if target_id in {"record-tab", "work-ti7"}:
+                response = pages[record_pages]
+                record_pages += 1
+                return response
+            raise AssertionError(f"Unexpected event: {event_type} {target_id}")
 
     reader.events = FakeEvents()
     return reader.run(number), calls
@@ -113,6 +133,29 @@ def test_reads_only_nonblank_remarks_across_pages() -> None:
         ],
     }
     assert calls[-1] == ("click", "work-ti7")
+    assert ("click", "mainrec_menus") not in calls
+    assert list(result) == [
+        "query_name", "query_work_order_number", "success", "檢修記錄"
+    ]
+
+
+def test_retries_all_records_only_after_confirmed_zero() -> None:
+    result, calls = _run_pages(
+        [_record_page(["需處理"], start=1, total=1)], default_found=False
+    )
+    assert result["檢修記錄"]["count"] == 1
+    assert [event for event, _ in calls].count("filterrows") == 2
+    assert ("click", "mainrec_menus") in calls
+
+
+def test_both_lists_empty_reports_not_found() -> None:
+    with pytest.raises(MMISClientError, match="找不到工作單"):
+        _run_pages([], default_found=False, fallback_found=False)
+
+
+def test_nonexact_default_result_does_not_switch_to_all_records() -> None:
+    with pytest.raises(MMISClientError, match="唯一且完全相符"):
+        _run_pages([], default_response=_list_result("115-2A-OTHER"))
 
 
 def test_all_blank_remarks_return_empty_records() -> None:

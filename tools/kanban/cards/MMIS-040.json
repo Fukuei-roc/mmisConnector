@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-040",
+  "title": "定期檢修工單先查預設清單，零筆再查所有記錄",
+  "content": "修改 ZZ_PMWO 單筆查詢順序：進入 app 後先篩選，只有確認零筆才切所有記錄重查；JSON 契約保持不變。",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-13",
+  "epic": "MMIS HTTP 定期檢修工單明細查詢",
+  "userStory": "查詢定期檢修記錄",
+  "dependsOn": ["MMIS-039"],
+  "order": 40,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/task-cards/MMIS-040.md", "verificationReport": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/verification/MMIS-040.md", "pr": ""},
+  "refs": ["src/mmis_connector/periodic_inspection/reader.py", "tests/test_periodic_inspection_work_order_details.py", "tools/mmis_development/README.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_periodic_inspection_work_order_details.py -q", "python -m pytest -q", "python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-76067-001", "python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001"], "findings": ["預設清單工單回傳成功且檢修記錄為空", "所有記錄工單經 fallback 回傳一筆", "JSON 欄位及巢狀結構不變"], "residual": "舊明細 DOM 錄製不在本機，對應可選測試略過。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-13", "text": "要求進入定期檢修工單後直接查詢；查不到才改所有記錄，輸出不變。"}]
+}
