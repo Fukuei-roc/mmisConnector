@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-039",
+  "title": "查詢定期檢修工單明細中的非空備註",
+  "content": "以工作單號唯讀查詢 ZZ_PMWO，跨頁擷取檢修記錄中備註非空的裝置名稱、檢修項目、回報結果與備註，輸出 stdout JSON。",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-13",
+  "epic": "MMIS HTTP 定期檢修工單明細查詢",
+  "userStory": "查詢定期檢修記錄",
+  "dependsOn": [],
+  "order": 39,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/task-cards/MMIS-039.md", "verificationReport": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/verification/MMIS-039.md", "pr": ""},
+  "refs": ["src/mmis_connector/periodic_inspection/reader.py", "tools/mmis_development/query_periodic_inspection_work_order_details.py", "tests/test_periodic_inspection_work_order_details.py"],
+  "evidence": {"commands": ["python -m pytest -q", "python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001", "git diff --check"], "findings": ["即時查詢得到一筆備註非空的四欄記錄", "合成測試涵蓋跨頁及全部空白"], "residual": "即時跨頁工單尚未驗證；錄製與本次即時工單均為單頁。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-13", "text": "指定定期檢修工單錄製、四個欄位、非空備註條件與檢修記錄 JSON 子項目。"}]
+}

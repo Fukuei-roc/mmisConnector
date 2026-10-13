@@ -131,6 +131,16 @@
       ]
     },
     {
+      "name": "MMIS HTTP 定期檢修工單明細查詢",
+      "definition": "以 HTTP-only 流程依工作單號查詢定期檢修工單，只輸出檢修記錄中備註非空的四個欄位。",
+      "stories": [
+        {
+          "name": "查詢定期檢修記錄",
+          "definition": "輸入工作單號，跨頁讀取檢修記錄並輸出備註非空的 JSON 子項目。"
+        }
+      ]
+    },
+    {
       "name": "MMIS HTTP 故障分析查詢",
       "definition": "以 HTTP-only 流程依通報號取得故障分析頁籤的五個欄位，並輸出 stdout JSON。",
       "stories": [
