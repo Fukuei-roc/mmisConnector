@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession, PageState
@@ -23,6 +24,31 @@ NOTE_FIELDS = (
     "處置措施", "材料編號(PA)", "員工代號", "人員姓名",
 )
 NOTE_SUMMARY = "紀事(備註)清單"
+MAINTENANCE_FIELDS = ("維修情形", "維修情形(詳述)")
+
+
+def _read_maintenance_status(detail: str) -> dict[str, str]:
+    _, soup = _parse_maximo_markup(detail)
+    dynamic_data = soup.find("td", attrs={"aria-label": "動態資料"})
+    if dynamic_data is None:
+        raise MMISClientError("定期檢修工單明細缺少動態資料頁簽")
+    result: dict[str, str] = {}
+    for field in MAINTENANCE_FIELDS:
+        controls = []
+        for label in dynamic_data.find_all("label", attrs={"for": True}):
+            if label.get_text(" ", strip=True).rstrip(":：").strip() != field:
+                continue
+            control = dynamic_data.find("textarea", id=str(label["for"]))
+            if control is not None and not any(
+                re.search(r"(?:^|;)\s*display\s*:\s*none\b", str(node.get("style", "")), re.I)
+                for node in (control, *control.parents)
+                if node is not dynamic_data
+            ):
+                controls.append(control)
+        if len(controls) != 1:
+            raise MMISClientError(f"定期檢修工單動態資料找不到唯一的{field}欄位")
+        result[field] = controls[0].get_text()
+    return result
 
 
 class PeriodicInspectionWorkOrderDetailReader:
@@ -195,6 +221,7 @@ class PeriodicInspectionWorkOrderDetailReader:
         }
         if detail_numbers != {number}:
             raise MMISClientError("定期檢修工單明細工作單與輸入不相符")
+        maintenance_status = _read_maintenance_status(detail)
         report_tab = parse_maximo_tab_target(detail, title="檢修回報")
         report = self.events.post(
             state=self.client.state or state,
@@ -272,4 +299,5 @@ class PeriodicInspectionWorkOrderDetailReader:
             "success": True,
             "維修程序概況": important_notes,
             "檢修記錄": {"count": len(records), "records": records},
+            **maintenance_status,
         }

@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-042",
+  "title": "定期檢修工單查詢新增維修情形",
+  "content": "從動態資料頁簽讀取維修情形與維修情形(詳述)，置於原 JSON 最後。",
+  "stage": "verify",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-14",
+  "epic": "MMIS HTTP 定期檢修工單明細查詢",
+  "userStory": "查詢定期檢修工單的維修情形",
+  "dependsOn": ["MMIS-041"],
+  "order": 42,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/task-cards/MMIS-042.md", "verificationReport": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/verification/MMIS-042.md", "pr": ""},
+  "refs": ["src/mmis_connector/periodic_inspection/reader.py", "tests/test_periodic_inspection_work_order_details.py", "tools/mmis_development/README.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_periodic_inspection_work_order_details.py -q", "python -m pytest -q", "python -m compileall -q src tools/mmis_development tests", "git diff --check", "python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001"], "findings": ["指定工單即時唯讀查詢成功；兩欄與錄製 DOM 一致且位於 JSON 最後", "目標測試與全套測試通過"], "residual": "其他工單的欄位內容及 DOM 差異尚未即時驗證。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-14", "text": "指定工單錄製、兩個 textarea 欄位及 JSON 最後順序。"}]
+}

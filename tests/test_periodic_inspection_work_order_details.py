@@ -10,6 +10,7 @@ from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.parser import parse_maximo_table
 from mmis_connector.periodic_inspection.reader import (
     PeriodicInspectionWorkOrderDetailReader,
+    _read_maintenance_status,
 )
 from tools.mmis_development import query_periodic_inspection_work_order_details as tool
 
@@ -23,6 +24,11 @@ IMPORTANT_NOTES_DOM = Path(
     r"C:\Docker\maximoFlowRecorder\recordings"
     r"\2026-10-13_query-periodic-inspection-work-order-important-notes"
     r"\dom\2026-10-13T064451-927.html"
+)
+MAINTENANCE_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-14_query-periodic-inspection-work-order-maintenance-status"
+    r"\dom\2026-10-14T050430-135.html"
 )
 STATE = PageState("session", 2, "csrf", "zz_pmwo", "https://example.test/app")
 
@@ -144,6 +150,14 @@ def _run_pages(
                 return (
                     '<label for="order-tb">工作單:</label>'
                     f'<input id="order-tb" value="{number}">'
+                    '<td aria-label="動態資料">'
+                    '<label for="status-ta">維修情形:</label>'
+                    '<textarea id="status-ta">第一行\n第二行</textarea>'
+                    '<label for="detail-ta">維修情形(詳述):</label>'
+                    '<textarea id="detail-ta"></textarea>'
+                    '<div style="display:none"><label for="hidden-ta">維修情形:</label>'
+                    '<textarea id="hidden-ta">過期資料</textarea></div>'
+                    '</td>'
                     '<li id="report-tab" ctype="tab">'
                     '<a title="檢修回報"></a></li>'
                 )
@@ -180,8 +194,30 @@ def test_reads_only_nonblank_remarks_across_pages() -> None:
     assert calls[-1] == ("click", "work-ti7")
     assert ("click", "mainrec_menus") not in calls
     assert list(result) == [
-        "query_name", "query_work_order_number", "success", "維修程序概況", "檢修記錄"
+        "query_name", "query_work_order_number", "success", "維修程序概況", "檢修記錄",
+        "維修情形", "維修情形(詳述)",
     ]
+    assert result["維修情形"] == "第一行\n第二行"
+    assert result["維修情形(詳述)"] == ""
+
+
+def test_missing_maintenance_field_fails_closed() -> None:
+    with pytest.raises(MMISClientError, match=r"維修情形\(詳述\)"):
+        _read_maintenance_status(
+            '<td aria-label="動態資料"><label for="status">維修情形:</label>'
+            '<textarea id="status">已處理</textarea></td>'
+        )
+
+
+@pytest.mark.skipif(not MAINTENANCE_DOM.exists(), reason="本機未提供維修情形錄製 DOM")
+def test_recorded_maintenance_status_preserves_multiline_text() -> None:
+    result = _read_maintenance_status(MAINTENANCE_DOM.read_text(encoding="utf-8"))
+    expected = (
+        "1. 二A保養正常。\n"
+        "2. 09/15EM9311第3軸齒輪箱漏油，已更換該軸齒輪油並隔離馬達，觀察使用。"
+        "開立臨修單115-C1-36682"
+    )
+    assert result == {"維修情形": expected, "維修情形(詳述)": expected}
 
 
 def test_reads_important_notes_across_pages_before_inspection_records() -> None:

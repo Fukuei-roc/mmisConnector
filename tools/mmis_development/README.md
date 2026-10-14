@@ -45,7 +45,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
 | 查詢臨時檢修工單明細 | 輸入工作單號；取得工單基本資料、已勾稽故障通報、維修程序概況及試車報告。 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C1-41264` |
 | 查詢日檢工單明細 | 輸入一個日檢工作單號；輸出基本資料、已勾稽故障通報、備註非空的檢修記錄、重要事項紀錄及檢修人員，完整欄位見 `recordings/README.md`。 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` |
-| 查詢定期檢修工單明細 | 輸入一個定期檢修工作單號；先查預設清單，確認零筆才切「所有記錄」重查。`維修程序概況` 取自檢修回報的紀事(備註)清單，含 count、records 及車組/車號、故障類別、故障類別說明、故障現象、故障原因、處置措施、材料編號(PA)、員工代號、人員姓名九欄。`檢修記錄` 只保留備註非空的列，含 count、records 及裝置名稱、檢修項目、回報結果、備註四欄。 | `python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-76067-001` |
+| 查詢定期檢修工單明細 | 輸入一個定期檢修工作單號；先查預設清單，確認零筆才切「所有記錄」重查。`維修程序概況` 取自檢修回報的紀事(備註)清單，含 count、records 及車組/車號、故障類別、故障類別說明、故障現象、故障原因、處置措施、材料編號(PA)、員工代號、人員姓名九欄。`檢修記錄` 只保留備註非空的列，含 count、records 及裝置名稱、檢修項目、回報結果、備註四欄。JSON 最後為動態資料頁簽的 `維修情形` 與 `維修情形(詳述)` 字串。 | `python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001` |
 | 依車號與日期查詢日檢工單 | 輸入車號與檢修日期條件；取得符合條件的日檢工單清單。 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` |
 | 依工作單號讀取明細 | 輸入日檢工作單號；取得該工單已勾稽的故障通報清單。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` |
 | 依工作單號勾稽故障通報 | 輸入日檢工作單號與通報號；將通報勾稽至工單並確認結果。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` |
