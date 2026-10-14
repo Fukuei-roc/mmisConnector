@@ -36,9 +36,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 
 | Tool | 用途 | 執行方式 |
 |---|---|---|
-| 查詢故障通報完整資料（最完整） | 輸入通報號；取得原有基本資料、ATP 標記、段修與 CA 工單及分析，最後新增「故障分析素材」：依段修工作單號分類查詢 C1/C2/C3、1A、2A/3A 明細。單筆失敗保留工作單號與錯誤訊息，其他工單繼續處理。 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
-
-「故障分析素材」固定包含 `臨時檢修工單`、`日檢工單`、`定期檢修工單` 三個陣列。每筆成功資料只擷取指定欄位，巢狀 `count` 與 `records` 原樣保留。相同工作單號只查詢一次，但輸出保留原出現次數與順序；暫時性網路錯誤最多查詢三次，前兩次失敗後分別立即、等待一秒重試。診斷訊息寫入 stderr，stdout 維持單一 JSON。
+| 查詢故障通報完整資料（最完整） | 輸入通報號；取得基本資料、ATP 標記、段檢修與 CA 查修工單、故障分析，以及適用時的 ATP 分析。 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
 | 查詢故障通報關聯的查修工單 | 輸入通報號；取得關聯的 CA 查修工單清單。 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
 | 查詢故障通報的故障分析 | 輸入通報號；取得事故現象、處理概況、故障原因、處理情形及改善對策。 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
 | 查詢故障通報關聯的 ATP 故障分析 | 輸入已勾選 ATP 故障的通報號；取得故障要因、故障因子及故障項目。 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` |

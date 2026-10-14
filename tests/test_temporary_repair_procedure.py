@@ -10,9 +10,11 @@ from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.parser import _parse_maximo_markup
 from mmis_connector.temporary_repair.reader import (
     TemporaryRepairProcedureReader,
+    _basic_labeled_value,
     _note_record,
     _note_table_summary,
     parse_temporary_repair_basic_info,
+    parse_temporary_repair_work_order,
     parse_temporary_repair_linked_fault_notices,
     parse_temporary_repair_test_run_page,
 )
@@ -32,6 +34,12 @@ BASIC_RECORDING = Path(
     r"\raw.har"
 )
 BASIC_DOM = BASIC_RECORDING.parent / "dom" / "2026-10-05T060838-420.html"
+CURRENT_BASIC_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-14_query-temporary-repair-work-order-basic-information"
+    r"\dom\2026-10-14T072525-937.html"
+)
+CURRENT_BASIC_RECORDING = CURRENT_BASIC_DOM.parent.parent / "raw.har"
 OPTIMIZATION_RECORDING = Path(
     r"C:\Docker\maximoFlowRecorder\recordings"
     r"\2026-10-05_optimize-temporary-repair-work-order-query-speed"
@@ -292,7 +300,7 @@ def test_linked_fault_notice_rejects_incomplete_page() -> None:
 
 
 @pytest.mark.parametrize("source", ["har", "dom"])
-def test_basic_information_recording_has_all_eight_visible_fields(source) -> None:
+def test_basic_information_recording_has_all_visible_fields(source) -> None:
     if not BASIC_RECORDING.exists() or not BASIC_DOM.exists():
         pytest.skip("基本資料錄製證據不在本機")
     if source == "har":
@@ -314,6 +322,47 @@ def test_basic_information_recording_has_all_eight_visible_fields(source) -> Non
     }
     assert basic["備註"].startswith("1.庫內啟動測試EMA815")
     assert "\n2." in basic["備註"] and "\n3." in basic["備註"]
+
+
+def test_current_recording_reads_parent_work_order_and_ignores_blank_child() -> None:
+    if not CURRENT_BASIC_DOM.exists():
+        pytest.skip("本次基本資料錄製 DOM 不在本機")
+    response = CURRENT_BASIC_DOM.read_text(encoding="utf-8")
+
+    assert parse_temporary_repair_work_order(response) == "115-C1-41264"
+
+
+def test_current_report_tab_response_contains_parent_work_order() -> None:
+    if not CURRENT_BASIC_RECORDING.exists():
+        pytest.skip("本次基本資料錄製 HAR 不在本機")
+    entries = json.loads(CURRENT_BASIC_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+
+    assert parse_temporary_repair_work_order(
+        entries[355]["response"]["content"]["text"]
+    ) == "115-C1-41264"
+
+
+def test_current_recording_uses_parent_work_order_when_child_differs() -> None:
+    if not CURRENT_BASIC_DOM.exists():
+        pytest.skip("本次基本資料錄製 DOM 不在本機")
+    _, soup = _parse_maximo_markup(CURRENT_BASIC_DOM.read_text(encoding="utf-8"))
+    child = soup.find("input", id="ma722a6d3-tb")
+    assert child is not None
+    child["value"] = "115-C1-99999"
+
+    assert _basic_labeled_value(soup, "工作單") == "115-C1-41264"
+
+
+def test_current_recording_rejects_blank_parent_work_order() -> None:
+    if not CURRENT_BASIC_DOM.exists():
+        pytest.skip("本次基本資料錄製 DOM 不在本機")
+    _, soup = _parse_maximo_markup(CURRENT_BASIC_DOM.read_text(encoding="utf-8"))
+    parent = soup.find("input", id="m13c43793-tb")
+    assert parent is not None
+    parent["value"] = ""
+
+    with pytest.raises(MMISClientError, match="工作單缺失或不一致"):
+        _basic_labeled_value(soup, "工作單")
 
 
 def test_basic_information_rejects_conflicting_duplicate_dates() -> None:
@@ -358,7 +407,12 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
 
     assert result["success"] is True
     assert result["query_name"] == "查詢臨時檢修工單明細"
-    assert result["work_order"] == "115-C2-41266"
+    assert list(result)[:5] == [
+        "query_name", "queried_work_order_number", "success", "工作單", "車組/車號",
+    ]
+    assert result["queried_work_order_number"] == "115-C2-41266"
+    assert result["工作單"] == "115-C2-41266"
+    assert "work_order" not in result
     assert result["車組/車號"] == "ED813"
     assert result["檢修級別"] == "C2"
     assert result["已勾稽故障通報"] == {"count": 0, "records": []}

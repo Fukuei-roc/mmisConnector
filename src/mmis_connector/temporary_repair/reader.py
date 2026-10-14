@@ -98,23 +98,36 @@ def _basic_field_value(control: Any, *, field: str) -> str:
         raise MMISClientError(f"臨時檢修工單{field}日期無效") from exc
 
 
+def _basic_labeled_value(soup: Any, field: str) -> str:
+    values = []
+    for label in soup.find_all("label", attrs={"for": True}):
+        if label.get_text(" ", strip=True).rstrip(":：").strip() != field:
+            continue
+        control = soup.find(id=str(label["for"]))
+        if control is None or control.name not in {"input", "textarea"}:
+            raise MMISClientError(f"臨時檢修工單基本資料找不到{field}輸入欄位")
+        value = _basic_field_value(control, field=field)
+        if field == "工作單":
+            # The primary form precedes the child work-order form in the DOM.
+            if not value:
+                break
+            return value
+        values.append(value)
+    if not values or len(set(values)) != 1:
+        raise MMISClientError(f"臨時檢修工單基本資料{field}缺失或不一致")
+    return values[0]
+
+
 def parse_temporary_repair_basic_info(response: str) -> dict[str, str]:
     """Read visible work-order fields by label/for, including duplicate date controls."""
     _, soup = _parse_maximo_markup(response)
-    result: dict[str, str] = {}
-    for field in BASIC_FIELDS:
-        values = []
-        for label in soup.find_all("label", attrs={"for": True}):
-            if label.get_text(" ", strip=True).rstrip(":：").strip() != field:
-                continue
-            control = soup.find(id=str(label["for"]))
-            if control is None or control.name not in {"input", "textarea"}:
-                raise MMISClientError(f"臨時檢修工單基本資料找不到{field}輸入欄位")
-            values.append(_basic_field_value(control, field=field))
-        if not values or len(set(values)) != 1:
-            raise MMISClientError(f"臨時檢修工單基本資料{field}缺失或不一致")
-        result[field] = values[0]
-    return result
+    return {field: _basic_labeled_value(soup, field) for field in BASIC_FIELDS}
+
+
+def parse_temporary_repair_work_order(response: str) -> str:
+    """Read the parent work order from the report tab response."""
+    _, soup = _parse_maximo_markup(response)
+    return _basic_labeled_value(soup, "工作單")
 
 
 def parse_temporary_repair_linked_fault_notices(
@@ -302,6 +315,9 @@ class TemporaryRepairProcedureReader:
             xhr_seq=xhr_seq,
         )
         xhr_seq += 1
+        detail_work_order = parse_temporary_repair_work_order(response)
+        if detail_work_order != number:
+            raise MMISClientError("工單明細工作單與查詢號碼不相符")
         report_response = response
         report_records: list[dict[str, str]] = []
         report_start = 1
@@ -426,9 +442,10 @@ class TemporaryRepairProcedureReader:
             )
             xhr_seq += 1
         return {
-            "success": True,
             "query_name": QUERY_NAME,
-            "work_order": number,
+            "queried_work_order_number": number,
+            "success": True,
+            "工作單": detail_work_order,
             **basic_info,
             "已勾稽故障通報": linked_fault_notices,
             "維修程序概況": {

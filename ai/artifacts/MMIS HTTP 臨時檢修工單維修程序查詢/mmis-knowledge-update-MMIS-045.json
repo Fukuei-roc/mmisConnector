@@ -1,0 +1,16 @@
+{
+  "section": "apiPatterns",
+  "id": "maximo-basic-detail-labels-and-visible-date",
+  "entry": {
+    "title": "Read basic Maximo detail fields through labels and visible date attributes",
+    "description": "Resolve detail inputs through their label/for relationship rather than recorded dynamic ids. Date controls may expose the displayed date through title or dojovalue. Maximo AJAX responses can contain only the changed tab fragment, so verify which response actually contains each target label before parsing it.",
+    "applicable_when": ["Reading a field that appears only after switching a Maximo tab"],
+    "advantages": ["Reuses an already requested tab response without another HTTP event"],
+    "disadvantages": ["Repeated labels for parent and child records require scoping before selecting a value"],
+    "recommended_when": ["The initial detail response lacks a target label but a later tab response contains it"],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": ["In the 2026-10-14 temporary repair work-order recording, the initial detail AJAX fragment omitted the parent 工作單 label; the 檢修回報 tab response contained it ahead of a child 工作單 control. Read the parent value from that response and verify it matches the exact queried number."],
+    "replaces": []
+  }
+}
