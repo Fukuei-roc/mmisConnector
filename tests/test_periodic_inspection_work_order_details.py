@@ -19,6 +19,11 @@ RECORDED_DOM = Path(
     r"\2026-10-13_query-periodic-inspection-work-order-details"
     r"\dom\2026-10-13T055217-284.html"
 )
+IMPORTANT_NOTES_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-13_query-periodic-inspection-work-order-important-notes"
+    r"\dom\2026-10-13T064451-927.html"
+)
 STATE = PageState("session", 2, "csrf", "zz_pmwo", "https://example.test/app")
 
 
@@ -68,15 +73,49 @@ def _record_page(
     )
 
 
+def _note_page(values: list[tuple[str, ...]], *, start: int = 1,
+               total: int | None = None, next_page: bool = False) -> str:
+    fields = (
+        "車組/車號", "故障類別", "故障類別說明", "故障現象", "故障原因",
+        "處置措施", "材料編號(PA)", "員工代號", "人員姓名",
+    )
+    total = len(values) if total is None else total
+    count = f"{start} - {start + len(values) - 1}/{total}" if total else "0 - 0/0"
+    headers = "".join(
+        f'<span id="note_ttrow_[C:{column}]_ttitle-lb">{field}</span>'
+        for column, field in enumerate(fields, 1)
+    )
+    rows = "".join(
+        f'<tr id="note_tbod_tdrow-tr[R:{index}]">'
+        + "".join(
+            f'<td id="note_tdrow_[C:{column}]-c[R:{index}]">'
+            f'<span title="{value}"></span></td>'
+            for column, value in enumerate(row, 1)
+        ) + "</tr>"
+        for index, row in enumerate(values)
+    )
+    next_button = (
+        '<a id="note-ti7"><img id="note-ti7_img" src="tablebtn_next_on.gif"></a>'
+        if next_page else ""
+    )
+    return (
+        f'<label id="note-lb3" class="tCount">{count}</label>{next_button}'
+        f'<table id="note_tbod-tbd" summary="紀事(備註)清單">'
+        f'{headers}{rows}</table>'
+    )
+
+
 def _run_pages(
     pages: list[str], *, default_found: bool = True, fallback_found: bool = True,
-    default_response: str | None = None,
+    default_response: str | None = None, note_pages: list[str] | None = None,
 ) -> tuple[dict, list[tuple[str, str]]]:
     number = "115-2A-69254-001"
     reader = PeriodicInspectionWorkOrderDetailReader(SimpleNamespace(state=STATE))
     calls: list[tuple[str, str]] = []
     filter_attempts = 0
     record_pages = 0
+    note_pages = note_pages or [_note_page([])]
+    note_page_index = 0
 
     class FakeEvents:
         def load_app_with_response(self, **kwargs):
@@ -84,7 +123,7 @@ def _run_pages(
             return STATE, _list_result(number)
 
         def post(self, **kwargs):
-            nonlocal filter_attempts, record_pages
+            nonlocal filter_attempts, record_pages, note_page_index
             calls.append((kwargs["event_type"], kwargs["target_id"]))
             event_type, target_id = calls[-1]
             if event_type == "setvalue":
@@ -109,7 +148,13 @@ def _run_pages(
                     '<a title="檢修回報"></a></li>'
                 )
             if target_id == "report-tab":
-                return '<li id="record-tab" ctype="tab"><a title="檢修記錄"></a></li>'
+                return (
+                    '<li id="record-tab" ctype="tab"><a title="檢修記錄"></a></li>'
+                    + note_pages[0]
+                )
+            if target_id == "note-ti7":
+                note_page_index += 1
+                return note_pages[note_page_index]
             if target_id in {"record-tab", "work-ti7"}:
                 response = pages[record_pages]
                 record_pages += 1
@@ -135,8 +180,47 @@ def test_reads_only_nonblank_remarks_across_pages() -> None:
     assert calls[-1] == ("click", "work-ti7")
     assert ("click", "mainrec_menus") not in calls
     assert list(result) == [
-        "query_name", "query_work_order_number", "success", "檢修記錄"
+        "query_name", "query_work_order_number", "success", "維修程序概況", "檢修記錄"
     ]
+
+
+def test_reads_important_notes_across_pages_before_inspection_records() -> None:
+    first = ("EMU701", "A", "說明", "異音", "磨耗", "更換", "PA123", "E123", "王員")
+    second = ("EMU702", "B", "其他", "震動", "鬆脫", "調整", "", "E456", "李員")
+    result, calls = _run_pages(
+        [_record_page([], start=1, total=0)],
+        note_pages=[
+            _note_page([first], total=2, next_page=True),
+            _note_page([second], start=2, total=2),
+        ],
+    )
+    assert result["維修程序概況"] == {
+        "count": 2,
+        "records": [
+            dict(zip(("車組/車號", "故障類別", "故障類別說明", "故障現象", "故障原因",
+                      "處置措施", "材料編號(PA)", "員工代號", "人員姓名"), row))
+            for row in (first, second)
+        ],
+    }
+    assert calls.index(("click", "note-ti7")) < calls.index(("click", "record-tab"))
+
+
+def test_missing_important_note_page_fails_closed() -> None:
+    with pytest.raises(MMISClientError, match="找不到下一頁"):
+        _run_pages([], note_pages=[_note_page([("x",) * 9], total=2)])
+
+
+@pytest.mark.skipif(not IMPORTANT_NOTES_DOM.exists(), reason="本機未提供重要事項錄製 DOM")
+def test_recorded_important_note_has_requested_nine_fields() -> None:
+    schema, rows = parse_maximo_table(
+        IMPORTANT_NOTES_DOM.read_text(encoding="utf-8"),
+        required_headers={"車組/車號", "故障類別", "故障類別說明", "故障現象", "故障原因",
+                          "處置措施", "材料編號(PA)", "員工代號", "人員姓名"},
+        table_summary="紀事(備註)清單",
+    )
+    assert schema is not None
+    assert len(rows) == 1
+    assert len(rows[0]) == 9
 
 
 def test_retries_all_records_only_after_confirmed_zero() -> None:

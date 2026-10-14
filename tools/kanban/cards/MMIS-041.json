@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-041",
+  "title": "定期檢修工單查詢新增重要事項紀錄",
+  "content": "從檢修回報的紀事(備註)清單讀取九欄，跨頁輸出維修程序概況，置於檢修記錄之前。",
+  "stage": "done",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-14",
+  "epic": "MMIS HTTP 定期檢修工單明細查詢",
+  "userStory": "查詢工單紀事(備註)清單",
+  "dependsOn": ["MMIS-040"],
+  "order": 41,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/task-cards/MMIS-041.md", "verificationReport": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/verification/MMIS-041.md", "pr": ""},
+  "refs": ["src/mmis_connector/periodic_inspection/reader.py", "tests/test_periodic_inspection_work_order_details.py", "tools/mmis_development/README.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_periodic_inspection_work_order_details.py -q", "python -m pytest -q", "python -m compileall -q src tools/mmis_development tests", "git diff --check", "python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-76067-001"], "findings": ["指定工單即時查詢回傳一筆九欄紀事", "維修程序概況位於檢修記錄之前", "目標測試與全套測試通過"], "residual": "錄製紀事僅一頁；跨頁以合成測試驗證。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-14", "text": "明確指定新增九欄紀事清單，JSON 維修程序概況置於檢修記錄之前。"}]
+}
