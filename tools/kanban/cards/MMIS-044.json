@@ -1,0 +1,32 @@
+{
+  "id": "MMIS-044",
+  "title": "完整故障通報新增故障分析素材",
+  "content": "依段修工作單號分類查詢臨修、日檢、定檢明細，擷取指定欄位並附加到原 JSON 最後；網路錯誤有限重試，單筆失敗隔離。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-14",
+  "epic": "MMIS HTTP 故障分析查詢",
+  "userStory": "由完整通報取得關聯工單明細",
+  "dependsOn": [],
+  "order": 44,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {
+    "featureSpec": "ai/artifacts/MMIS HTTP 故障分析查詢/feature-spec-analysis-materials.md",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "ai/artifacts/MMIS HTTP 故障分析查詢/task-cards/MMIS-044.md",
+    "verificationReport": "ai/artifacts/MMIS HTTP 故障分析查詢/verification/MMIS-044.md",
+    "pr": ""
+  },
+  "refs": ["src/mmis_connector/fault_notices/analysis_materials.py", "tools/mmis_development/query_fault_notice_full_detail.py", "tests/test_fault_notice_analysis_materials.py"],
+  "evidence": {
+    "commands": ["python -m pytest tests/test_fault_notice_analysis_materials.py tests/test_fault_notice_full_detail.py -q", "python -m pytest -q -ra", "python -m compileall -q src/mmis_connector/fault_notices tools/mmis_development/query_fault_notice_full_detail.py tests/test_fault_notice_analysis_materials.py", "python -m pip check", "git diff --check", "python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14"],
+    "findings": ["完整測試通過；需要外部錄製證據的測試維持 skip", "Live 唯讀查詢成功：兩筆臨修與一筆日檢皆取得明細，定檢陣列為空", "同一 Session 與既有 Reader 重用，無認證或遠端寫入變更"],
+    "residual": "其他通報的 MMIS DOM 差異尚未逐筆 live 驗證。"
+  },
+  "comments": [{"name": "專案使用者", "time": "2026-10-14", "text": "明確要求直接實作、測試與文件更新。"}]
+}

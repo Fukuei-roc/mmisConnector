@@ -150,11 +150,15 @@
     },
     {
       "name": "MMIS HTTP 故障分析查詢",
-      "definition": "以 HTTP-only 流程依通報號取得故障分析頁籤的五個欄位，並輸出 stdout JSON。",
+      "definition": "以 HTTP-only 流程依通報號取得故障分析與關聯工單的故障分析素材，並輸出 stdout JSON。",
       "stories": [
         {
           "name": "查詢故障分析",
           "definition": "輸入單一通報號，取得事故現象、處理概況、故障原因、處理情形與改善對策，且不產生檔案。"
+        },
+        {
+          "name": "由完整通報取得關聯工單明細",
+          "definition": "保留原通報 JSON，依段修工作單號查詢三類明細，在最後加入故障分析素材。"
         }
       ]
     }

@@ -106,6 +106,7 @@ def test_every_production_module_is_classified() -> None:
         "daily_inspection/reader.py",
         "events.py",
         "fault_notices/__init__.py",
+        "fault_notices/analysis_materials.py",
         "fault_notices/atp_reader.py",
         "fault_notices/full_detail.py",
         "fault_notices/linked_work_orders.py",

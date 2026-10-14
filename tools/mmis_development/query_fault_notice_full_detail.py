@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from mmis_connector.auth import MMISClientError, MMISConfig, MMISSession
+from mmis_connector.fault_notices.analysis_materials import collect_analysis_materials
 from mmis_connector.fault_notices.full_detail import FaultNoticeFullDetailReader
 from mmis_connector.fault_notices.reader import normalize_fault_notice
 
@@ -19,7 +20,9 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     notice = normalize_fault_notice(args[0])
     client = MMISSession(MMISConfig.from_env())
     client.login()
-    return FaultNoticeFullDetailReader(client).run(notice)
+    result = FaultNoticeFullDetailReader(client).run(notice)
+    result["故障分析素材"] = collect_analysis_materials(client, result["段修工單"])
+    return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:

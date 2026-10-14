@@ -1,0 +1,30 @@
+{
+  "section": "stableWorkflows",
+  "id": "aggregate-read-only-work-order-details-with-shared-session",
+  "entry": {
+    "title": "Aggregate read-only MMIS work-order details with one session and isolated failures",
+    "description": "For a fault notice with linked work orders, reuse one authenticated MMISSession across domain Readers, classify by the work-order number, cache repeated numbers, and keep each failed detail as an explicit error item while preserving the original notice JSON.",
+    "applicable_when": [
+      "Adding detailed data from linked MMIS work orders to an existing read-only query"
+    ],
+    "advantages": [
+      "Avoids repeated login and duplicate work-order queries",
+      "Preserves source data even when one linked detail query fails"
+    ],
+    "disadvantages": [
+      "Sequential detail reads add latency when a notice links many work orders"
+    ],
+    "recommended_when": [
+      "Building read-only multi-order MMIS query aggregations"
+    ],
+    "status": "confirmed",
+    "reusable": true,
+    "notes": [
+      "Use the existing domain Reader.run methods and let each app switch through MaximoEventClient on the same MMISSession.",
+      "Classify MMISClientError network failures through the requests exception cause chain and known transport error shape; do not retry parse, authentication, or not-found failures.",
+      "The explicit whole-order retry budget is three attempts: immediate second attempt, one-second delay before the third. Existing transport GET retries are a separate layer; Maximo POST transport retries remain disabled.",
+      "The 2026-10-14 live read of fault notice 1150910-14 returned successful detail for two C-series orders and one 1A order with one shared session."
+    ],
+    "replaces": []
+  }
+}
