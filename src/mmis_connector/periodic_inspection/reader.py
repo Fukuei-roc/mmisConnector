@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession, PageState
@@ -25,6 +26,44 @@ NOTE_FIELDS = (
 )
 NOTE_SUMMARY = "紀事(備註)清單"
 MAINTENANCE_FIELDS = ("維修情形", "維修情形(詳述)")
+BASIC_FIELDS = (
+    "工作單", "車組/車號", "檢修級別", "檢修日期", "完工日期", "工作單狀態",
+)
+DATE_FIELDS = {"檢修日期", "完工日期"}
+
+
+def _read_basic_info(detail: str, *, expected_work_order: str) -> dict[str, str]:
+    _, soup = _parse_maximo_markup(detail)
+    result: dict[str, str] = {}
+    for field in BASIC_FIELDS:
+        values: list[str] = []
+        for label in soup.find_all("label", attrs={"for": True}):
+            if label.get_text(" ", strip=True).rstrip(":：").strip() != field:
+                continue
+            control = soup.find("input", id=str(label["for"]))
+            if control is None or any(
+                re.search(r"(?:^|;)\s*display\s*:\s*none\b", str(node.get("style", "")), re.I)
+                for node in (label, control, *label.parents, *control.parents)
+            ):
+                continue
+            value = str(control.get("value", "")).strip()
+            if field in DATE_FIELDS and not value:
+                value = str(control.get("title", "")).strip()
+                if not value and control.get("dojovalue"):
+                    try:
+                        taipei = timezone(timedelta(hours=8))
+                        value = datetime.fromtimestamp(
+                            int(str(control["dojovalue"])) / 1000, taipei
+                        ).strftime("%Y/%m/%d")
+                    except (ValueError, OverflowError, OSError) as exc:
+                        raise MMISClientError(f"定期檢修工單基本資料{field}日期無效") from exc
+            values.append(value)
+        if not values or len(set(values)) != 1:
+            raise MMISClientError(f"定期檢修工單基本資料{field}缺失或不一致")
+        result[field] = values[0]
+    if result["工作單"] != expected_work_order:
+        raise MMISClientError("定期檢修工單明細工作單與輸入不相符")
+    return result
 
 
 def _read_maintenance_status(detail: str) -> dict[str, str]:
@@ -212,15 +251,7 @@ class PeriodicInspectionWorkOrderDetailReader:
             xhr_seq=xhr_seq,
         )
         xhr_seq += 1
-        _, soup = _parse_maximo_markup(detail)
-        detail_numbers = {
-            str(soup.find(id=str(label["for"])).get("value", "")).strip()
-            for label in soup.find_all("label", attrs={"for": True})
-            if label.get_text(" ", strip=True).rstrip(":：").strip() == "工作單"
-            and soup.find(id=str(label["for"])) is not None
-        }
-        if detail_numbers != {number}:
-            raise MMISClientError("定期檢修工單明細工作單與輸入不相符")
+        basic_info = _read_basic_info(detail, expected_work_order=number)
         maintenance_status = _read_maintenance_status(detail)
         report_tab = parse_maximo_tab_target(detail, title="檢修回報")
         report = self.events.post(
@@ -297,6 +328,7 @@ class PeriodicInspectionWorkOrderDetailReader:
             "query_name": "查詢定期檢修工單明細",
             "query_work_order_number": number,
             "success": True,
+            **basic_info,
             "維修程序概況": important_notes,
             "檢修記錄": {"count": len(records), "records": records},
             **maintenance_status,

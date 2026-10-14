@@ -10,6 +10,7 @@ from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.parser import parse_maximo_table
 from mmis_connector.periodic_inspection.reader import (
     PeriodicInspectionWorkOrderDetailReader,
+    _read_basic_info,
     _read_maintenance_status,
 )
 from tools.mmis_development import query_periodic_inspection_work_order_details as tool
@@ -29,6 +30,11 @@ MAINTENANCE_DOM = Path(
     r"C:\Docker\maximoFlowRecorder\recordings"
     r"\2026-10-14_query-periodic-inspection-work-order-maintenance-status"
     r"\dom\2026-10-14T050430-135.html"
+)
+BASIC_INFO_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-14_query-periodic-inspection-work-order-basic-information"
+    r"\dom\2026-10-14T055015-893.html"
 )
 STATE = PageState("session", 2, "csrf", "zz_pmwo", "https://example.test/app")
 
@@ -150,6 +156,16 @@ def _run_pages(
                 return (
                     '<label for="order-tb">工作單:</label>'
                     f'<input id="order-tb" value="{number}">'
+                    '<label for="vehicle-tb">車組/車號:</label>'
+                    '<input id="vehicle-tb" value="EMU931">'
+                    '<label for="level-tb">檢修級別:</label>'
+                    '<input id="level-tb" value="2A">'
+                    '<label for="inspection-tb">檢修日期:</label>'
+                    '<input id="inspection-tb" value="" title="2026/09/16">'
+                    '<label for="completion-tb">完工日期:</label>'
+                    '<input id="completion-tb" value="" dojovalue="1789488000000">'
+                    '<label for="order-status-tb">工作單狀態:</label>'
+                    '<input id="order-status-tb" value="工單結案">'
                     '<td aria-label="動態資料">'
                     '<label for="status-ta">維修情形:</label>'
                     '<textarea id="status-ta">第一行\n第二行</textarea>'
@@ -194,9 +210,17 @@ def test_reads_only_nonblank_remarks_across_pages() -> None:
     assert calls[-1] == ("click", "work-ti7")
     assert ("click", "mainrec_menus") not in calls
     assert list(result) == [
-        "query_name", "query_work_order_number", "success", "維修程序概況", "檢修記錄",
+        "query_name", "query_work_order_number", "success",
+        "工作單", "車組/車號", "檢修級別", "檢修日期", "完工日期", "工作單狀態",
+        "維修程序概況", "檢修記錄",
         "維修情形", "維修情形(詳述)",
     ]
+    assert {field: result[field] for field in (
+        "工作單", "車組/車號", "檢修級別", "檢修日期", "完工日期", "工作單狀態"
+    )} == {
+        "工作單": "115-2A-69254-001", "車組/車號": "EMU931", "檢修級別": "2A",
+        "檢修日期": "2026/09/16", "完工日期": "2026/09/16", "工作單狀態": "工單結案",
+    }
     assert result["維修情形"] == "第一行\n第二行"
     assert result["維修情形(詳述)"] == ""
 
@@ -206,6 +230,36 @@ def test_missing_maintenance_field_fails_closed() -> None:
         _read_maintenance_status(
             '<td aria-label="動態資料"><label for="status">維修情形:</label>'
             '<textarea id="status">已處理</textarea></td>'
+        )
+
+
+@pytest.mark.skipif(not BASIC_INFO_DOM.exists(), reason="本機未提供基本資料錄製 DOM")
+def test_recorded_basic_info_has_six_requested_fields() -> None:
+    result = _read_basic_info(
+        BASIC_INFO_DOM.read_text(encoding="utf-8"),
+        expected_work_order="115-2A-69254-001",
+    )
+    assert result == {
+        "工作單": "115-2A-69254-001", "車組/車號": "EMU931", "檢修級別": "2A",
+        "檢修日期": "2026/09/16", "完工日期": "2026/09/16", "工作單狀態": "工單結案",
+    }
+
+
+def test_basic_info_rejects_missing_or_mismatched_work_order() -> None:
+    with pytest.raises(MMISClientError, match="車組/車號缺失"):
+        _read_basic_info(
+            '<label for="order">工作單:</label><input id="order" value="115-2A-69254-001">',
+            expected_work_order="115-2A-69254-001",
+        )
+    with pytest.raises(MMISClientError, match="工作單與輸入不相符"):
+        _read_basic_info(
+            '<label for="order">工作單:</label><input id="order" value="OTHER">'
+            '<label for="vehicle">車組/車號:</label><input id="vehicle" value="EMU931">'
+            '<label for="level">檢修級別:</label><input id="level" value="2A">'
+            '<label for="inspection">檢修日期:</label><input id="inspection" value="">'
+            '<label for="completion">完工日期:</label><input id="completion" value="">'
+            '<label for="status">工作單狀態:</label><input id="status" value="工單結案">',
+            expected_work_order="115-2A-69254-001",
         )
 
 

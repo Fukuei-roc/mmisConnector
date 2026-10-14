@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-043",
+  "title": "定期檢修工單查詢新增基本資料",
+  "content": "從工單明細讀取六欄基本資料，直接置於 JSON 第一層的 success 與維修程序概況之間。",
+  "stage": "acceptance",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-14",
+  "epic": "MMIS HTTP 定期檢修工單明細查詢",
+  "userStory": "查詢定期檢修工單的基本資料",
+  "dependsOn": [],
+  "order": 43,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/task-cards/MMIS-043.md", "verificationReport": "ai/artifacts/MMIS HTTP 定期檢修工單明細查詢/verification/MMIS-043.md", "pr": ""},
+  "refs": ["src/mmis_connector/periodic_inspection/reader.py", "tests/test_periodic_inspection_work_order_details.py", "tools/mmis_development/README.md"],
+  "evidence": {"commands": ["python -m pytest tests/test_periodic_inspection_work_order_details.py -q", "python -m pytest -q", "python -m compileall -q src/mmis_connector/periodic_inspection tools/mmis_development/query_periodic_inspection_work_order_details.py tests/test_periodic_inspection_work_order_details.py", "git diff --check", "python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001"], "findings": ["指定工單即時唯讀查詢成功，基本資料六欄與錄製 DOM 一致，直接位於 JSON 第一層的 success 與維修程序概況之間", "目標測試與全套測試通過"], "residual": "其他工單的 DOM 差異尚未即時驗證。"},
+  "comments": [{"name": "專案使用者", "time": "2026-10-14", "text": "指定錄製、六欄內容與 JSON 位置。"}, {"name": "專案使用者", "time": "2026-10-14", "text": "修正 JSON 契約：六欄直接放第一層，不放在基本資料物件下。"}]
+}
