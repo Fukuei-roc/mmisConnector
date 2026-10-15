@@ -9,8 +9,8 @@ from mmis_connector.fault_notices.full_detail import FaultNoticeFullDetailReader
 from mmis_connector.fault_notices.linked_work_orders import FIELDS as LINKED_FIELDS
 from mmis_connector.fault_notices.reader import ANALYSIS_FIELDS
 from mmis_connector.fault_notices.repair_work_orders import FIELDS as REPAIR_FIELDS
-from mmis_connector.parser import parse_fault_notice_basic_info
-from tools.mmis_development.query_fault_notice_full_detail import execute
+from mmis_connector.parser import parse_fault_notice_basic_info, parse_labeled_textareas
+from tools.mmis_development.query_fault_notice_full_detail import _fault_analysis_completed, execute
 
 
 STATE = PageState("session", 3, "csrf", "zz_fnm", "https://example.test/app")
@@ -19,6 +19,33 @@ RECORDED_DOM = Path(
     r"\2026-10-02_query-fault-notice-basic-information\dom"
     r"\2026-10-02T065515-168.html"
 )
+COMPLETION_RECORDED_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-15_check-fault-notice-management-fault-analysis-completion\dom"
+    r"\2026-10-15T053224-827.html"
+)
+
+
+@pytest.mark.parametrize(("values", "completed"), [
+    (("甲", "乙", "丙"), True),
+    (("甲", "乙", ""), False),
+    (("甲", "  \n", "丙"), False),
+    (("", "乙", "丙"), False),
+])
+def test_analysis_completion_requires_all_three_nonblank_fields(
+    values: tuple[str, str, str], completed: bool
+) -> None:
+    analysis = dict(zip(("故障原因", "處理情形", "改善對策"), values))
+    assert _fault_analysis_completed(analysis) is completed
+
+
+@pytest.mark.skipif(not COMPLETION_RECORDED_DOM.is_file(), reason="local recording unavailable")
+def test_recorded_fault_analysis_is_completed() -> None:
+    analysis = parse_labeled_textareas(
+        COMPLETION_RECORDED_DOM.read_text(encoding="utf-8"),
+        field_names=ANALYSIS_FIELDS,
+    )
+    assert _fault_analysis_completed(analysis) is True
 
 
 def _basic_info() -> str:

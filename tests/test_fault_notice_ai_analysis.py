@@ -24,7 +24,7 @@ def notice():
         "通報號": "1150910-14", "車組/車號": "EM9351",
         "段修工單": [{"工作單": "115-C1-1", "車組/車號": "EM9001"}],
         "CA查修工單": [{"工作單": "115-CA-1"}],
-        "故障分析": {"事故現象": "停機", "處理概況": "檢查中", "故障原因": "舊結論", "其他欄": "保留"},
+        "故障分析": {"事故現象": "停機", "處理概況": "檢查中", "故障原因": "舊結論", "處理情形": "", "改善對策": "", "其他欄": "保留"},
         "ATP故障分析": None,
         "故障分析素材": {
             "臨時檢修工單": [
@@ -122,7 +122,9 @@ def test_cli_without_flag_never_calls_ai(monkeypatch, notice):
     monkeypatch.setattr(tool, "FaultNoticeFullDetailReader", lambda client: SimpleNamespace(run=lambda number: copy.deepcopy(notice)))
     monkeypatch.setattr(tool, "collect_analysis_materials", lambda client, orders: notice["故障分析素材"])
     monkeypatch.setattr(tool, "analyze_fault_notice", lambda result: pytest.fail("unexpected paid API call"))
-    assert tool.execute(["1150910-14"]) == notice
+    result = tool.execute(["1150910-14"])
+    assert result["Fault Analysis Completed"] is False
+    assert {key: result[key] for key in notice} == notice
 
 
 def test_cli_with_flag_adds_ai_analysis(monkeypatch, notice):
@@ -133,6 +135,7 @@ def test_cli_with_flag_adds_ai_analysis(monkeypatch, notice):
     monkeypatch.setattr(tool, "analyze_fault_notice", lambda result: GOOD)
     merged = tool.execute(["1150910-14", "--ai-analysis"])
     assert list(merged)[-1] == "故障分析"
+    assert merged["Fault Analysis Completed"] is False
     assert merged["故障分析"]["故障原因"] == GOOD["故障原因"]
     assert json.loads(json.dumps(merged, ensure_ascii=False)) == merged
 

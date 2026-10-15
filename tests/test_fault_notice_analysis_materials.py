@@ -158,7 +158,7 @@ def test_collection_dispatches_all_three_readers_with_same_client(monkeypatch: p
 
 
 def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    source = {"通報號": "1150910-14", "段修工單": [{"工作單": "115-C1-1"}], "故障分析": {"x": "原文"}}
+    source = {"通報號": "1150910-14", "段修工單": [{"工作單": "115-C1-1"}], "故障分析": {"故障原因": "甲", "處理情形": "乙", "改善對策": "丙"}}
     original = copy.deepcopy(source)
     monkeypatch.setattr(tool.MMISConfig, "from_env", lambda: SimpleNamespace())
     monkeypatch.setattr(tool, "MMISSession", lambda _: SimpleNamespace(login=lambda: None))
@@ -168,7 +168,8 @@ def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.Mon
     output = capsys.readouterr()
     parsed = json.loads(output.out)
     assert output.err == ""
-    assert list(parsed)[-1] == "故障分析素材"
+    assert list(parsed)[-2:] == ["Fault Analysis Completed", "故障分析素材"]
+    assert parsed["Fault Analysis Completed"] is True
     assert {key: parsed[key] for key in original} == original
 
 
@@ -181,7 +182,7 @@ def test_cli_materials_use_work_order_label_for_temporary_repairs(
             "115-C1-35820", "115-C2-35988", "115-C3-12345", "115-1A-70151", "115-2A-69254-001",
         )],
         "CA查修工單": [{"工作單": "115-CA-40035"}],
-        "故障分析": {"原因": "原文"},
+        "故障分析": {"故障原因": "甲", "處理情形": "乙", "改善對策": "丙"},
     }
     monkeypatch.setattr(tool.MMISConfig, "from_env", lambda: SimpleNamespace())
     monkeypatch.setattr(tool, "MMISSession", lambda _: SimpleNamespace(login=lambda: None))

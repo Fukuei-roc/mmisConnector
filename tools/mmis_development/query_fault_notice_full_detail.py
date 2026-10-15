@@ -13,6 +13,11 @@ from ._support import run_json_tool
 
 
 USAGE = "python -m tools.mmis_development.query_fault_notice_full_detail <通報號> [--ai-analysis]"
+COMPLETION_FIELDS = ("故障原因", "處理情形", "改善對策")
+
+
+def _fault_analysis_completed(analysis: dict[str, str]) -> bool:
+    return all(bool(analysis[field].strip()) for field in COMPLETION_FIELDS)
 
 
 def execute(args: Sequence[str]) -> dict[str, Any]:
@@ -22,6 +27,7 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     client = MMISSession(MMISConfig.from_env())
     client.login()
     result = FaultNoticeFullDetailReader(client).run(notice)
+    result["Fault Analysis Completed"] = _fault_analysis_completed(result["故障分析"])
     result["故障分析素材"] = collect_analysis_materials(client, result["段修工單"])
     if len(args) == 2:
         result = merge_fault_analysis(result, analyze_fault_notice(result))
