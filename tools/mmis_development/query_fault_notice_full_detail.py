@@ -20,6 +20,18 @@ def _fault_analysis_completed(analysis: dict[str, str]) -> bool:
     return all(bool(analysis[field].strip()) for field in COMPLETION_FIELDS)
 
 
+def evaluate_depot_work_order_status(work_orders: Sequence[dict[str, Any]]) -> dict[str, bool]:
+    statuses = [work_order.get("工作單狀態") for work_order in work_orders]
+    return {
+        "All Depot Maintenance Work Orders Closed": bool(statuses) and all(
+            status == "工單結案" for status in statuses
+        ),
+        "Depot Maintenance Work Orders Pending Approval": any(
+            status == "簽核中" for status in statuses
+        ),
+    }
+
+
 def execute(args: Sequence[str]) -> dict[str, Any]:
     if len(args) not in (1, 2) or (len(args) == 2 and args[1] != "--ai-analysis"):
         raise MMISClientError(f"用法: {USAGE}")
@@ -28,6 +40,7 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     client.login()
     result = FaultNoticeFullDetailReader(client).run(notice)
     result["Fault Analysis Completed"] = _fault_analysis_completed(result["故障分析"])
+    result.update(evaluate_depot_work_order_status(result["段修工單"]))
     result["故障分析素材"] = collect_analysis_materials(client, result["段修工單"])
     if len(args) == 2:
         result = merge_fault_analysis(result, analyze_fault_notice(result))

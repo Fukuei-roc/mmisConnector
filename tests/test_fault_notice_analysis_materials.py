@@ -168,8 +168,15 @@ def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.Mon
     output = capsys.readouterr()
     parsed = json.loads(output.out)
     assert output.err == ""
-    assert list(parsed)[-2:] == ["Fault Analysis Completed", "故障分析素材"]
+    assert list(parsed)[-4:] == [
+        "Fault Analysis Completed",
+        "All Depot Maintenance Work Orders Closed",
+        "Depot Maintenance Work Orders Pending Approval",
+        "故障分析素材",
+    ]
     assert parsed["Fault Analysis Completed"] is True
+    assert parsed["All Depot Maintenance Work Orders Closed"] is False
+    assert parsed["Depot Maintenance Work Orders Pending Approval"] is False
     assert {key: parsed[key] for key in original} == original
 
 
