@@ -39,8 +39,17 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     client = MMISSession(MMISConfig.from_env())
     client.login()
     result = FaultNoticeFullDetailReader(client).run(notice)
-    result["Fault Analysis Completed"] = _fault_analysis_completed(result["故障分析"])
-    result.update(evaluate_depot_work_order_status(result["段修工單"]))
+    status_checks = {
+        "Fault Analysis Completed": _fault_analysis_completed(result["故障分析"]),
+        **evaluate_depot_work_order_status(result["段修工單"]),
+        "CA Repair Work Orders Not Closed": any(
+            not work_order.get("狀態判定") for work_order in result.get("CA查修工單", [])
+        ),
+    }
+    items = list(result.items())
+    atp_index = next(index for index, (key, _) in enumerate(items) if key == "是ATP故障")
+    items.insert(atp_index + 1, ("結案狀態檢查", status_checks))
+    result = dict(items)
     result["故障分析素材"] = collect_analysis_materials(client, result["段修工單"])
     if len(args) == 2:
         result = merge_fault_analysis(result, analyze_fault_notice(result))

@@ -45,15 +45,22 @@ def test_missing_work_order_status_is_not_closed_or_pending():
     }
 
 
-def test_execute_reuses_original_orders_and_preserves_output(monkeypatch):
+@pytest.mark.parametrize(("ca_orders", "not_closed"), [
+    ([], False),
+    ([{"狀態判定": "返段檢修"}], False),
+    ([{"狀態判定": ""}], True),
+    ([{"狀態判定": "返段檢修"}, {"狀態判定": ""}], True),
+])
+def test_execute_reuses_original_orders_and_preserves_output(monkeypatch, ca_orders, not_closed):
     orders = [
         {"工作單": "115-1A-73469", "工作單狀態": "工單結案", "狀態": "併單"},
         {"工作單": "115-C1-41264", "工作單狀態": "工單結案", "狀態": "處理完成"},
     ]
     source = {
         "通報號": "1151005-29",
+        "是ATP故障": False,
         "段修工單": orders,
-        "CA查修工單": [],
+        "CA查修工單": ca_orders,
         "故障分析": {"故障原因": "甲", "處理情形": "乙", "改善對策": "丙"},
         "ATP故障分析": None,
     }
@@ -74,14 +81,20 @@ def test_execute_reuses_original_orders_and_preserves_output(monkeypatch):
     result = tool.execute(["1151005-29"])
 
     assert calls == ["login", "materials"]
-    assert list(result)[-4:] == [
+    assert list(result)[-1:] == ["故障分析素材"]
+    assert list(result)[list(result).index("是ATP故障") + 1] == "結案狀態檢查"
+    assert list(result["結案狀態檢查"]) == [
         "Fault Analysis Completed",
         "All Depot Maintenance Work Orders Closed",
         "Depot Maintenance Work Orders Pending Approval",
-        "故障分析素材",
+        "CA Repair Work Orders Not Closed",
     ]
-    assert result["Fault Analysis Completed"] is True
-    assert result["All Depot Maintenance Work Orders Closed"] is True
-    assert result["Depot Maintenance Work Orders Pending Approval"] is False
+    assert result["結案狀態檢查"] == {
+        "Fault Analysis Completed": True,
+        "All Depot Maintenance Work Orders Closed": True,
+        "Depot Maintenance Work Orders Pending Approval": False,
+        "CA Repair Work Orders Not Closed": not_closed,
+    }
+    assert not set(result["結案狀態檢查"]) & set(result)
     assert result["故障分析素材"] is materials
     assert {key: result[key] for key in original} == original
