@@ -23,7 +23,7 @@ ORDER_TYPES = {
     "1A": "日檢工單", "2A": "定期檢修工單", "3A": "定期檢修工單",
 }
 FIELDS = {
-    "臨時檢修工單": ("work_order", "車組/車號", "故障現象", "原因說明", "備註", "維修程序概況"),
+    "臨時檢修工單": ("工作單", "車組/車號", "故障現象", "原因說明", "備註", "維修程序概況"),
     "日檢工單": ("工作單", "車組/車號", "檢修記錄", "重要事項紀錄"),
     "定期檢修工單": ("工作單", "車組/車號", "維修程序概況", "檢修記錄", "維修情形", "維修情形(詳述)"),
 }
@@ -100,10 +100,9 @@ def query_with_retry(query: Callable[[str], dict[str, Any]], work_order: str) ->
 def extract_fields(kind: str, result: dict[str, Any], work_order: str) -> dict[str, Any]:
     if result.get("success") is not True:
         raise MMISClientError(_error_message(result))
-    key = "work_order" if kind == "臨時檢修工單" else "工作單"
     output: dict[str, Any] = {}
     for field in FIELDS[kind]:
-        if field == key:
+        if field == "工作單":
             output[field] = result.get(field) or work_order
         elif field in NESTED:
             output[field] = copy.deepcopy(result.get(field, {"count": 0, "records": []}))
@@ -134,7 +133,6 @@ def collect_analysis_materials(client: MMISSession, work_orders: list[dict[str, 
             except Exception as exc:  # noqa: BLE001 - preserve full notice and continue
                 message = _error_message(exc)
                 LOGGER.error("工單 %s 查詢失敗: %s", number, message)
-                key = "work_order" if kind == "臨時檢修工單" else "工作單"
-                cache[number] = {key: number, "查詢狀態": "失敗", "錯誤訊息": message}
+                cache[number] = {"工作單": number, "查詢狀態": "失敗", "錯誤訊息": message}
         materials[kind].append(copy.deepcopy(cache[number]))
     return materials

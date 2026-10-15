@@ -31,7 +31,7 @@ def test_extract_only_requested_fields_and_preserve_nested_data() -> None:
     nested = {"count": 2, "records": [{"備註": "第一行\n第二行", "額外欄位": "保留"}, {"x": 2}]}
     for kind in ("臨時檢修工單", "日檢工單", "定期檢修工單"):
         source = {
-            "success": True, "query_name": "ignored", "work_order": "115-C1-1",
+            "success": True, "query_name": "ignored", "work_order": "legacy-value",
             "工作單": "115-1A-1", "車組/車號": "EMA815", "故障現象": "現象",
             "原因說明": "原因", "備註": "備註", "維修程序概況": nested,
             "檢修記錄": nested, "重要事項紀錄": nested,
@@ -39,6 +39,8 @@ def test_extract_only_requested_fields_and_preserve_nested_data() -> None:
         }
         result = extract_fields(kind, source, "fallback")
         assert "success" not in result and "query_name" not in result
+        assert "work_order" not in result
+        assert result["工作單"] == source["工作單"]
         assert all(result[field] == nested for field in result if field in ("維修程序概況", "檢修記錄", "重要事項紀錄"))
         if kind == "定期檢修工單":
             assert result["維修情形(詳述)"] == "丙\n丁"
@@ -109,7 +111,7 @@ def test_collection_preserves_order_duplicates_and_failures(monkeypatch: pytest.
         calls.append(number)
         if number.endswith("2"):
             raise MMISClientError("找不到工作單")
-        return {"success": True, "work_order": number, "維修程序概況": {"count": 1, "records": [{"raw": "a\nb"}]}}
+        return {"success": True, "工作單": number, "維修程序概況": {"count": 1, "records": [{"raw": "a\nb"}]}}
 
     monkeypatch.setattr("mmis_connector.fault_notices.analysis_materials.TemporaryRepairProcedureReader.run", temporary)
     rows = [
@@ -122,8 +124,10 @@ def test_collection_preserves_order_duplicates_and_failures(monkeypatch: pytest.
     result = collect_analysis_materials(SimpleNamespace(), rows)
     assert list(result) == ["臨時檢修工單", "日檢工單", "定期檢修工單"]
     assert calls == ["115-C1-1", "115-C2-2", "115-C3-3"]
-    assert [x["work_order"] for x in result["臨時檢修工單"]] == ["115-C1-1", "115-C2-2", "115-C3-3", "115-C1-1"]
+    assert [x["工作單"] for x in result["臨時檢修工單"]] == ["115-C1-1", "115-C2-2", "115-C3-3", "115-C1-1"]
+    assert all("work_order" not in x for x in result["臨時檢修工單"])
     assert result["臨時檢修工單"][1]["查詢狀態"] == "失敗"
+    assert result["臨時檢修工單"][1]["錯誤訊息"] == "找不到工作單"
     assert result["臨時檢修工單"][0]["維修程序概況"]["records"][0]["raw"] == "a\nb"
     assert result["日檢工單"] == result["定期檢修工單"] == []
     assert collect_analysis_materials(SimpleNamespace(), []) == {kind: [] for kind in result}
@@ -136,8 +140,7 @@ def test_collection_dispatches_all_three_readers_with_same_client(monkeypatch: p
     def fake(kind: str):
         def run(self: object, number: str) -> dict[str, object]:
             calls.append((kind, self.client, number))
-            key = "work_order" if kind == "臨時檢修工單" else "工作單"
-            return {"success": True, key: number}
+            return {"success": True, "工作單": number}
         return run
 
     monkeypatch.setattr("mmis_connector.fault_notices.analysis_materials.TemporaryRepairProcedureReader.run", fake("臨時檢修工單"))
@@ -167,3 +170,40 @@ def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.Mon
     assert output.err == ""
     assert list(parsed)[-1] == "故障分析素材"
     assert {key: parsed[key] for key in original} == original
+
+
+def test_cli_materials_use_work_order_label_for_temporary_repairs(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = {
+        "通報號": "1150910-14",
+        "段修工單": [{"工作單": number} for number in (
+            "115-C1-35820", "115-C2-35988", "115-C3-12345", "115-1A-70151", "115-2A-69254-001",
+        )],
+        "CA查修工單": [{"工作單": "115-CA-40035"}],
+        "故障分析": {"原因": "原文"},
+    }
+    monkeypatch.setattr(tool.MMISConfig, "from_env", lambda: SimpleNamespace())
+    monkeypatch.setattr(tool, "MMISSession", lambda _: SimpleNamespace(login=lambda: None))
+    monkeypatch.setattr(tool.FaultNoticeFullDetailReader, "run", lambda self, _: source)
+
+    def temporary(self: object, number: str) -> dict[str, object]:
+        if "-C2-" in number:
+            raise MMISClientError("找不到工作單")
+        return {"success": True, "工作單": number, "車組/車號": "EMU935"}
+
+    monkeypatch.setattr("mmis_connector.fault_notices.analysis_materials.TemporaryRepairProcedureReader.run", temporary)
+    monkeypatch.setattr("mmis_connector.fault_notices.analysis_materials.DailyInspectionInspectionRecordReader.run", lambda self, number: {"success": True, "工作單": number})
+    monkeypatch.setattr("mmis_connector.fault_notices.analysis_materials.PeriodicInspectionWorkOrderDetailReader.run", lambda self, number: {"success": True, "工作單": number})
+
+    assert tool.main(["1150910-14"]) == 0
+    output = capsys.readouterr()
+    parsed = json.loads(output.out)
+    materials = parsed["故障分析素材"]
+    temporary_rows = materials["臨時檢修工單"]
+    assert [row["工作單"] for row in temporary_rows] == ["115-C1-35820", "115-C2-35988", "115-C3-12345"]
+    assert all("work_order" not in row for row in temporary_rows)
+    assert temporary_rows[1] == {"工作單": "115-C2-35988", "查詢狀態": "失敗", "錯誤訊息": "找不到工作單"}
+    assert [row["工作單"] for row in materials["日檢工單"]] == ["115-1A-70151"]
+    assert [row["工作單"] for row in materials["定期檢修工單"]] == ["115-2A-69254-001"]
+    assert {key: parsed[key] for key in source} == source
