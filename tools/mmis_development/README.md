@@ -53,6 +53,15 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 最後一項會修改 MMIS 資料。只能在明確核准的受控 Live 驗證或人工單筆操作中使用；若
 結果不明，先人工確認，不得直接重送。
 
+查詢完整故障通報時，可依需求選擇是否產生 AI 故障分析：
+
+```powershell
+python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14
+python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14 --ai-analysis
+```
+
+第一個指令只查詢 MMIS，不呼叫 OpenAI API。加上 `--ai-analysis` 後，工具會在原查詢完成後產生「故障原因」、「處理情形」、「改善對策」，並合併至 JSON 最後的「故障分析」物件；此模式會產生 API 費用，需先設定 `OPENAI_API_KEY`。設定方式見根目錄 `README.md`。
+
 ## Future Development
 
 ```text

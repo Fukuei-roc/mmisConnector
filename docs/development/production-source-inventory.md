@@ -19,6 +19,7 @@
 | `fault_notices/atp_reader.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `FaultNoticeATPAnalysisReader` | 保留；重用唯一通報明細查詢，再確認 ATP 勾選與讀取 ATP 故障分析 |
 | `fault_notices/full_detail.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `FaultNoticeFullDetailReader` | 保留；在同一明細與 session 中編排兩張工單表及條件式 ATP 分析 |
 | `fault_notices/analysis_materials.py` | B：正式共用整合元件 | Auto-link 不使用；完整通報 development tool 呼叫 `collect_analysis_materials` | 保留；重用三類工單 Reader，負責分類、欄位擷取、重試、單筆失敗隔離與去重查詢 |
+| `fault_notices/ai_analysis.py` | B：正式共用分析元件 | Auto-link 不使用；完整通報 development tool 僅在 `--ai-analysis` 時呼叫 | 保留；讀取獨立 Prompt、整理原始 JSON 副本、呼叫 OpenAI、驗證三欄並合併結果 |
 | `fault_notices/linked_work_orders.py` | B：正式共用 Reader | Auto-link 不使用；獨立與整合查詢重用 | 保留；封裝段檢修工單分頁與去重 |
 | `fault_notices/repair_work_orders.py` | B：正式共用 Reader | Auto-link 不使用；獨立與整合查詢重用 | 保留；封裝 CA 查修工單分頁、篩選與去重 |
 | `daily_inspection/__init__.py` | B：domain package boundary | 標示 daily-inspection domain；不擴張 root public API | 保留 |

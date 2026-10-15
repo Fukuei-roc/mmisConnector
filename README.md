@@ -58,7 +58,7 @@ Auto-link 以一個 MMIS session 查詢本段未處理故障通報，依每筆�
 python -m pip install -e ".[test]"
 ```
 
-Runtime dependencies 為 `requests`、`beautifulsoup4` 與 `python-dotenv`；
+Runtime dependencies 為 `requests`、`beautifulsoup4`、`python-dotenv` 與 `openai`；
 `pytest` 由 `test` optional dependency 提供。
 
 ## Configuration
@@ -88,6 +88,56 @@ MMIS_TIMEOUT_SECONDS=20
 `.env` 已由 Git ignore 排除；`.env.example` 只保留空白或示範值。若內部 CA 尚未加入
 Python trust store，應優先安裝正確 CA。只有在確認網路與目標可信時，才暫時使用
 `MMIS_VERIFY_SSL=false`。
+
+### 可選的 OpenAI 故障分析
+
+故障通報完整資料工具可在原始 MMIS 查詢完成後，以 OpenAI Responses API 的
+Structured Outputs 重新產生「故障原因」、「處理情形」、「改善對策」。此功能只在
+明確加入 `--ai-analysis` 時呼叫付費 API；原查詢及正式批次 CLI 不受影響。
+
+先執行 `python -m pip install -e ".[test]"` 更新套件，並在既有 `.env` 加入：
+
+```dotenv
+OPENAI_API_KEY=你的 API Key
+OPENAI_MODEL=gpt-6-luna
+OPENAI_REASONING_EFFORT=medium
+OPENAI_MAX_OUTPUT_TOKENS=12000
+OPENAI_TIMEOUT_SECONDS=120
+```
+
+系統環境變數優先於 `.env`。若帳號無法存取預設模型，可用 `OPENAI_MODEL` 指定
+帳號可用且支援 Responses API Structured Outputs 的模型；不會自動改用其他模型。
+規則位於根目錄 [SystemPrompt.md](SystemPrompt.md)，每次事故資料模板位於
+[UserPrompt.md](UserPrompt.md)，兩者於每次執行時讀取。送交 AI 的是原始查詢 JSON
+副本，會排除其中舊的三個結論欄位，保留事故現象、處理概況及全部工單明細；
+不按車號篩選。
+
+```powershell
+python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14
+python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14 --ai-analysis
+```
+
+成功時 stdout 為單一 JSON；AI 模式將原有「故障分析」物件移至最後，保留其原始欄位，
+並更新三個結論欄位，例如：
+
+```json
+{
+  "通報號": "1150910-14",
+  "故障分析素材": {"臨時檢修工單": [], "日檢工單": [], "定期檢修工單": []},
+  "故障分析": {
+    "事故現象": "...",
+    "處理概況": "...",
+    "故障原因": "* 依實際證據撰寫。",
+    "處理情形": "* 依實際處置撰寫。",
+    "改善對策": "* 維修面：\n  * 依實際故障模式撰寫。"
+  }
+}
+```
+
+範例只示意結構，實際輸出保留所有 MMIS 欄位。暫時性 API 錯誤最多額外重試兩次，
+格式錯誤最多重新生成一次；設定、權限或額度錯誤不重試。失敗時採既有開發工具契約：
+stdout 輸出單一 JSON 錯誤物件、exit code 為 1，不輸出部分分析或 API Key。
+每次 AI 模式執行可能產生 API 費用；請先確認模型價格與組織資料使用政策。
 
 ## Usage
 
