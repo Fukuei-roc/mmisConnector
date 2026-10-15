@@ -35,7 +35,7 @@ class FaultNoticeATPAnalysisReader(FaultNoticeAnalysisReader):
             event_type="click",
             target_id=analysis_tab,
             value="",
-            xhr_seq=3,
+            xhr_seq=self.next_xhr_seq,
         )
         atp_tab = parse_maximo_tab_target(
             analysis_response, title="故障分析-ATP"
@@ -46,7 +46,7 @@ class FaultNoticeATPAnalysisReader(FaultNoticeAnalysisReader):
             event_type="click",
             target_id=atp_tab,
             value="",
-            xhr_seq=4,
+            xhr_seq=self.next_xhr_seq + 1,
         )
         analysis = parse_labeled_inputs(
             atp_response,

@@ -33,12 +33,12 @@ class FaultNoticeFullDetailReader(FaultNoticeAnalysisReader):
             event_type="click",
             target_id=tracking_tab,
             value="",
-            xhr_seq=3,
+            xhr_seq=self.next_xhr_seq,
         )
         linked_reader = LinkedWorkOrdersReader(self.client)
         repair_reader = RepairWorkOrdersReader(self.client)
         work_orders, xhr_seq = linked_reader.read_records(
-            tracking_response, state=state, xhr_seq=4
+            tracking_response, state=state, xhr_seq=self.next_xhr_seq + 1
         )
         repair_orders, xhr_seq = repair_reader.read_records(
             tracking_response, state=state, xhr_seq=xhr_seq

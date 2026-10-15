@@ -64,6 +64,7 @@ def _run(
     monkeypatch: pytest.MonkeyPatch,
     *,
     notices: list[str] | None = None,
+    all_records_notices: list[str] | None = None,
     analysis_response: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     client = SimpleNamespace(state=STATE)
@@ -76,6 +77,8 @@ def _run(
 
     def fake_post_events(**kwargs: Any) -> str:
         multi_calls.append(kwargs)
+        if len(multi_calls) == 2:
+            return _filter_result(all_records_notices or [])
         return _filter_result(
             ["1150828-12"] if notices is None else notices
         )
@@ -84,6 +87,10 @@ def _run(
 
     def fake_post_event(**kwargs: Any) -> str:
         post_calls.append(kwargs)
+        if kwargs["target_id"] == "toolbar2_tbs_0_tbcb_0_query-img":
+            return '<div id="mainrec_menus">useAllRecsQuery_OPTION</div>'
+        if kwargs["target_id"] == "mainrec_menus":
+            return _list_page()
         return next(responses)
 
     monkeypatch.setattr(reader.events, "post_events", fake_post_events)
@@ -140,6 +147,21 @@ def test_run_preserves_empty_and_multiline_values(
 def test_run_rejects_missing_notice(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(MMISClientError, match="找不到故障通報"):
         _run(monkeypatch, notices=[])
+
+
+def test_run_falls_back_to_all_records_only_after_empty_first_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, multi_calls, post_calls = _run(
+        monkeypatch, notices=[], all_records_notices=["1150828-12"]
+    )
+    assert result["fault_notice"] == "1150828-12"
+    assert [call["xhr_seq"] for call in multi_calls] == [1, 4]
+    assert [call["target_id"] for call in post_calls] == [
+        "toolbar2_tbs_0_tbcb_0_query-img", "mainrec_menus",
+        "notice_tdrow_[C:14]_ttxt-lb[R:0]", "analysis-tab",
+    ]
+    assert [call["xhr_seq"] for call in post_calls] == [2, 3, 5, 6]
 
 
 def test_run_rejects_multiple_notices(monkeypatch: pytest.MonkeyPatch) -> None:

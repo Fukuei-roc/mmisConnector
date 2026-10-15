@@ -26,10 +26,10 @@ class LinkedWorkOrdersReader(FaultNoticeAnalysisReader):
             event_type="click",
             target_id=tab,
             value="",
-            xhr_seq=3,
+            xhr_seq=self.next_xhr_seq,
         )
 
-        records, _ = self.read_records(response, state=state, xhr_seq=4)
+        records, _ = self.read_records(response, state=state, xhr_seq=self.next_xhr_seq + 1)
         return {
             "success": True,
             "query_name": "查詢故障通報關聯的工單",

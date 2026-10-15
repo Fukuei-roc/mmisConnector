@@ -39,6 +39,7 @@ class FaultNoticeAnalysisReader:
     def __init__(self, client: MMISSession) -> None:
         self.client = client
         self.events = MaximoEventClient(client)
+        self.next_xhr_seq = 3
 
     def _post_event(
         self,
@@ -80,7 +81,7 @@ class FaultNoticeAnalysisReader:
             event_type="click",
             target_id=analysis_tab,
             value="",
-            xhr_seq=3,
+            xhr_seq=self.next_xhr_seq,
         )
         analysis = parse_labeled_textareas(
             analysis_response, field_names=ANALYSIS_FIELDS
@@ -93,6 +94,7 @@ class FaultNoticeAnalysisReader:
         }
 
     def _load_exact_detail(self, normalized_notice: str) -> tuple[PageState, str]:
+        self.next_xhr_seq = 3
         state, list_response = self._load_list()
         list_schema = parse_maximo_table_schema(
             list_response, required_headers=REQUIRED_HEADERS
@@ -121,7 +123,51 @@ class FaultNoticeAnalysisReader:
             filter_response, required_headers=REQUIRED_HEADERS
         )
         if not records:
-            raise MMISClientError(f"找不到故障通報：{normalized_notice}")
+            menu_response = self._post_event(
+                state=self.client.state or state,
+                current_focus="toolbar2_tbs_0_tbcb_0_query-tb",
+                event_type="click",
+                target_id="toolbar2_tbs_0_tbcb_0_query-img",
+                value="",
+                xhr_seq=2,
+            )
+            if "mainrec_menus" not in menu_response or "useAllRecsQuery_OPTION" not in menu_response:
+                raise MMISClientError("MMIS 未回傳所有記錄查詢選單")
+            all_records_response = self._post_event(
+                state=self.client.state or state,
+                current_focus="menu0_useAllRecsQuery_OPTION_a",
+                event_type="click",
+                target_id="mainrec_menus",
+                value="useAllRecsQuery_OPTION",
+                xhr_seq=3,
+            )
+            all_records_schema = parse_maximo_table_schema(
+                all_records_response, required_headers=REQUIRED_HEADERS
+            )
+            all_notice_columns = [
+                column for column, header in all_records_schema.headers.items()
+                if header == "通報號"
+            ]
+            if len(all_notice_columns) != 1:
+                raise MMISClientError("所有記錄清單找不到唯一的「通報號」欄位")
+            all_filter_target = (
+                f"{all_records_schema.prefix}_tfrow_[C:{all_notice_columns[0]}]_txt-tb"
+            )
+            filter_response = self.events.post_events(
+                state=self.client.state or state,
+                current_focus=all_filter_target,
+                events=[
+                    ("setvalue", all_filter_target, normalized_notice),
+                    ("filterrows", f"{all_records_schema.prefix}_tbod_tfrow-tr", ""),
+                ],
+                xhr_seq=4,
+            )
+            result_schema, records = parse_maximo_table(
+                filter_response, required_headers=REQUIRED_HEADERS
+            )
+            self.next_xhr_seq = 6
+            if not records:
+                raise MMISClientError(f"找不到故障通報：{normalized_notice}")
         if result_schema is None or len(records) != 1:
             raise MMISClientError("故障通報查詢結果不是唯一一筆")
         if records[0].get("通報號") != normalized_notice:
@@ -151,6 +197,6 @@ class FaultNoticeAnalysisReader:
             event_type="click",
             target_id=detail_target,
             value="",
-            xhr_seq=2,
+            xhr_seq=self.next_xhr_seq - 1,
         )
         return state, detail_response
