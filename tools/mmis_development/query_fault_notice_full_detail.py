@@ -5,6 +5,7 @@ from typing import Any
 
 from mmis_connector.auth import MMISClientError, MMISConfig, MMISSession
 from mmis_connector.fault_notices.analysis_materials import collect_analysis_materials
+from mmis_connector.fault_notices.atp_reader import ATP_ANALYSIS_FIELDS
 from mmis_connector.fault_notices.full_detail import FaultNoticeFullDetailReader
 from mmis_connector.fault_notices.reader import normalize_fault_notice
 from mmis_connector.fault_notices.ai_analysis import analyze_fault_notice, merge_fault_analysis
@@ -18,6 +19,13 @@ COMPLETION_FIELDS = ("故障原因", "處理情形", "改善對策")
 
 def _fault_analysis_completed(analysis: dict[str, str]) -> bool:
     return all(bool(analysis[field].strip()) for field in COMPLETION_FIELDS)
+
+
+def _atp_fault_analysis_incomplete(atp_fault: bool, analysis: dict[str, str] | None) -> bool:
+    return atp_fault and any(
+        not str((analysis or {}).get(field) or "").strip()
+        for field in ATP_ANALYSIS_FIELDS
+    )
 
 
 def evaluate_depot_work_order_status(work_orders: Sequence[dict[str, Any]]) -> dict[str, bool]:
@@ -44,6 +52,9 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
         **evaluate_depot_work_order_status(result["段修工單"]),
         "CA Repair Work Orders Not Closed": any(
             not work_order.get("狀態判定") for work_order in result.get("CA查修工單", [])
+        ),
+        "ATP Fault Analysis Incomplete": _atp_fault_analysis_incomplete(
+            result["是ATP故障"], result.get("ATP故障分析")
         ),
     }
     items = list(result.items())

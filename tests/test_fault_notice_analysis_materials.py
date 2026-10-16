@@ -175,12 +175,14 @@ def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.Mon
         "All Depot Maintenance Work Orders Closed",
         "Depot Maintenance Work Orders Pending Approval",
         "CA Repair Work Orders Not Closed",
+        "ATP Fault Analysis Incomplete",
     ]
     assert parsed["結案狀態檢查"] == {
         "Fault Analysis Completed": True,
         "All Depot Maintenance Work Orders Closed": False,
         "Depot Maintenance Work Orders Pending Approval": False,
         "CA Repair Work Orders Not Closed": False,
+        "ATP Fault Analysis Incomplete": False,
     }
     assert not set(parsed["結案狀態檢查"]) & set(parsed)
     assert {key: parsed[key] for key in original} == original

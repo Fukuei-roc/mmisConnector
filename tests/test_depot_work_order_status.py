@@ -8,6 +8,19 @@ import pytest
 from tools.mmis_development import query_fault_notice_full_detail as tool
 
 
+@pytest.mark.parametrize(("atp_fault", "analysis", "incomplete"), [
+    (False, None, False),
+    (False, {"故障要因": "", "故障因子": "", "故障項目": ""}, False),
+    (True, {"故障要因": "甲", "故障因子": "乙", "故障項目": "丙"}, False),
+    (True, {"故障要因": "", "故障因子": "乙", "故障項目": "丙"}, True),
+    (True, {"故障要因": "甲", "故障因子": "  ", "故障項目": "丙"}, True),
+    (True, {"故障要因": "甲", "故障因子": "乙", "故障項目": ""}, True),
+    (True, None, True),
+])
+def test_atp_fault_analysis_incomplete(atp_fault, analysis, incomplete):
+    assert tool._atp_fault_analysis_incomplete(atp_fault, analysis) is incomplete
+
+
 @pytest.mark.parametrize(("statuses", "closed", "pending"), [
     (["工單結案"], True, False),
     (["工單結案", "工單結案"], True, False),
@@ -51,18 +64,24 @@ def test_missing_work_order_status_is_not_closed_or_pending():
     ([{"狀態判定": ""}], True),
     ([{"狀態判定": "返段檢修"}, {"狀態判定": ""}], True),
 ])
-def test_execute_reuses_original_orders_and_preserves_output(monkeypatch, ca_orders, not_closed):
+@pytest.mark.parametrize(("atp_fault", "atp_analysis", "incomplete"), [
+    (False, None, False),
+    (True, {"故障要因": "甲", "故障因子": "", "故障項目": "丙"}, True),
+])
+def test_execute_reuses_original_orders_and_preserves_output(
+    monkeypatch, ca_orders, not_closed, atp_fault, atp_analysis, incomplete
+):
     orders = [
         {"工作單": "115-1A-73469", "工作單狀態": "工單結案", "狀態": "併單"},
         {"工作單": "115-C1-41264", "工作單狀態": "工單結案", "狀態": "處理完成"},
     ]
     source = {
         "通報號": "1151005-29",
-        "是ATP故障": False,
+        "是ATP故障": atp_fault,
         "段修工單": orders,
         "CA查修工單": ca_orders,
         "故障分析": {"故障原因": "甲", "處理情形": "乙", "改善對策": "丙"},
-        "ATP故障分析": None,
+        "ATP故障分析": atp_analysis,
     }
     original = copy.deepcopy(source)
     materials = {"臨時檢修工單": [], "日檢工單": [], "定期檢修工單": []}
@@ -88,12 +107,14 @@ def test_execute_reuses_original_orders_and_preserves_output(monkeypatch, ca_ord
         "All Depot Maintenance Work Orders Closed",
         "Depot Maintenance Work Orders Pending Approval",
         "CA Repair Work Orders Not Closed",
+        "ATP Fault Analysis Incomplete",
     ]
     assert result["結案狀態檢查"] == {
         "Fault Analysis Completed": True,
         "All Depot Maintenance Work Orders Closed": True,
         "Depot Maintenance Work Orders Pending Approval": False,
         "CA Repair Work Orders Not Closed": not_closed,
+        "ATP Fault Analysis Incomplete": incomplete,
     }
     assert not set(result["結案狀態檢查"]) & set(result)
     assert result["故障分析素材"] is materials
