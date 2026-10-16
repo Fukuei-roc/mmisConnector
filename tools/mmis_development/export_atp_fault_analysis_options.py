@@ -14,7 +14,7 @@ from ._support import run_json_tool
 
 
 USAGE = "python -m tools.mmis_development.export_atp_fault_analysis_options <已勾選ATP故障的通報號>"
-OUTPUT = Path(__file__).resolve().parents[2] / "atp_fault_analysis_options.json"
+OUTPUT = Path(__file__).resolve().parents[2] / "data" / "atp_fault_analysis_options.json"
 
 
 def execute(args: Sequence[str]) -> dict[str, Any]:

@@ -158,7 +158,10 @@ def merge_fault_analysis(result: dict[str, Any], generated: dict[str, str]) -> d
     return merged
 
 
-def _request(client: OpenAI, config: OpenAIAnalysisConfig, system: str, user: str) -> str:
+def _request(
+    client: OpenAI, config: OpenAIAnalysisConfig, system: str, user: str,
+    *, schema: dict[str, Any] = SCHEMA, name: str = "fault_analysis",
+) -> str:
     try:
         for attempt in range(3):
             try:
@@ -168,7 +171,7 @@ def _request(client: OpenAI, config: OpenAIAnalysisConfig, system: str, user: st
                     max_output_tokens=config.max_output_tokens,
                     store=False,
                     input=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                    text={"format": {"type": "json_schema", "name": "fault_analysis", "strict": True, "schema": SCHEMA}},
+                    text={"format": {"type": "json_schema", "name": name, "strict": True, "schema": schema}},
                 )
                 break
             except (APITimeoutError, APIConnectionError, RateLimitError, APIStatusError) as exc:

@@ -9,6 +9,7 @@ from mmis_connector.fault_notices.atp_reader import ATP_ANALYSIS_FIELDS
 from mmis_connector.fault_notices.full_detail import FaultNoticeFullDetailReader
 from mmis_connector.fault_notices.reader import normalize_fault_notice
 from mmis_connector.fault_notices.ai_analysis import analyze_fault_notice, merge_fault_analysis
+from mmis_connector.fault_notices.atp_ai_analysis import analyze_atp_fault
 
 from ._support import run_json_tool
 
@@ -64,6 +65,17 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     result["故障分析素材"] = collect_analysis_materials(client, result["段修工單"])
     if len(args) == 2:
         result = merge_fault_analysis(result, analyze_fault_notice(result))
+        if result["是ATP故障"] is True:
+            try:
+                suggestion = analyze_atp_fault(result)
+            except MMISClientError as exc:
+                analysis = result.pop("故障分析")
+                result["ATP故障分析_AI建議錯誤"] = str(exc)
+                result["故障分析"] = analysis
+            else:
+                analysis = result.pop("故障分析")
+                result["ATP故障分析_AI建議"] = suggestion
+                result["故障分析"] = analysis
     return result
 
 

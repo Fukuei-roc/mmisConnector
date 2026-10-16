@@ -36,7 +36,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 
 | Tool | 用途 | 執行方式 |
 |---|---|---|
-| 查詢故障通報完整資料（最完整） | 輸入通報號；取得基本資料、ATP 標記、段檢修與 CA 查修工單、故障分析，以及適用時的 ATP 分析。 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
+| 查詢故障通報完整資料（最完整） | 輸入通報號；取得基本資料、ATP 標記、段檢修與 CA 查修工單、故障分析及 MMIS 原有 ATP 分析；指定 `--ai-analysis` 且為 ATP 故障時，另產生 ATP AI 分類建議。 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
 | 查詢故障通報關聯的查修工單 | 輸入通報號；取得關聯的 CA 查修工單清單。 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
 | 查詢故障通報的故障分析 | 輸入通報號；取得事故現象、處理概況、故障原因、處理情形及改善對策。 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
 | 查詢故障通報關聯的 ATP 故障分析 | 輸入已勾選 ATP 故障的通報號；取得故障要因、故障因子及故障項目。 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` |
@@ -59,9 +59,12 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 ```powershell
 python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14
 python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14 --ai-analysis
+python -m tools.mmis_development.query_fault_notice_full_detail 1151012-36 --ai-analysis
 ```
 
 第一個指令只查詢 MMIS，不呼叫 OpenAI API。加上 `--ai-analysis` 後，工具會在原查詢完成後產生「故障原因」、「處理情形」、「改善對策」，並合併至 JSON 最後的「故障分析」物件；此模式會產生 API 費用，需先設定 `OPENAI_API_KEY`。設定方式見根目錄 `README.md`。
+
+當 `--ai-analysis` 已指定且「是ATP故障」為布林 `true`，工具也會使用相同的故障通報與工單素材，獨立產生 `ATP故障分析_AI建議`。即使 MMIS 原有三欄分類已完整、部分空白或全部空白，仍會執行 ATP AI 分類。`ATP故障分析` 保留 MMIS 原始填報值；AI 建議會依 `data/atp_fault_analysis_options.json` 的父子選項結構驗證，兩者可以不同。若無法產生合法分類，結果不會包含 AI 建議，而會提供 `ATP故障分析_AI建議錯誤`；原始通報、MMIS 分類及既有故障分析仍保留。此功能只提供建議，不會寫入 MMIS。
 
 ATP 選項匯出工具屬於 Development / Diagnostic Tool。從專案根目錄執行：
 
@@ -69,7 +72,7 @@ ATP 選項匯出工具屬於 Development / Diagnostic Tool。從專案根目錄�
 python -m tools.mmis_development.export_atp_fault_analysis_options 1151012-36
 ```
 
-參數需為已勾選 ATP 故障、目前可查詢的通報號。工具使用 `.env` 建立有效 MMIS Session，僅以 HTTP 查詢與暫態 UI 選項事件讀取資料，不送出儲存或其他業務寫入事件。完整成功時會在專案根目錄原子更新 UTF-8 JSON `atp_fault_analysis_options.json`，內容包含三層選項樹、統計與狀態。若部分分支失敗，會將路徑與原因寫到 `atp_fault_analysis_options.partial.json`，原有完整 JSON 不受影響；登入或初始查詢失敗則不更新檔案。重新執行完整成功時會更新原有 JSON。
+參數需為已勾選 ATP 故障、目前可查詢的通報號。工具使用 `.env` 建立有效 MMIS Session，僅以 HTTP 查詢與暫態 UI 選項事件讀取資料，不送出儲存或其他業務寫入事件。完整成功時會在專案的 `data/` 目錄原子更新 UTF-8 JSON `atp_fault_analysis_options.json`，內容包含三層選項樹、統計與狀態。若部分分支失敗，會將路徑與原因寫到同目錄的 `atp_fault_analysis_options.partial.json`，原有完整 JSON 不受影響；登入或初始查詢失敗則不更新檔案。重新執行完整成功時會更新原有 JSON。
 
 ## Future Development
 
