@@ -109,6 +109,7 @@ def test_every_production_module_is_classified() -> None:
         "fault_notices/ai_analysis.py",
         "fault_notices/analysis_materials.py",
         "fault_notices/atp_reader.py",
+        "fault_notices/atp_options.py",
         "fault_notices/full_detail.py",
         "fault_notices/linked_work_orders.py",
         "fault_notices/repair_work_orders.py",
@@ -161,7 +162,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         if path.name not in {"__init__.py", "_support.py"}
     ]
 
-    assert len(tool_paths) == 13
+    assert len(tool_paths) == 14
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {

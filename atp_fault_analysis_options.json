@@ -1,0 +1,451 @@
+{
+  "schema_version": "1.0",
+  "source": "MMIS",
+  "module": "故障通報管理",
+  "tab": "故障分析-ATP",
+  "generated_at": "2026-10-16T03:17:58.493997+00:00",
+  "traversal_status": "completed",
+  "statistics": {
+    "causes": 6,
+    "factors": 23,
+    "items": 65,
+    "valid_combinations": 65
+  },
+  "fault_causes": [
+    {
+      "code": null,
+      "name": "其它",
+      "factors": [
+        {
+          "code": null,
+          "name": "其它",
+          "items": [
+            {
+              "code": null,
+              "name": "其它"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": null,
+      "name": "人為因素",
+      "factors": [
+        {
+          "code": null,
+          "name": "綜調所通報資料有誤",
+          "items": [
+            {
+              "code": null,
+              "name": "綜調所通報資料有誤"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "車號通報有誤",
+          "items": [
+            {
+              "code": null,
+              "name": "車號通報有誤"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "未註記交接簿/無報修記錄",
+          "items": [
+            {
+              "code": null,
+              "name": "未註記交接簿/無報修記錄"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "未寫原因分析",
+          "items": [
+            {
+              "code": null,
+              "name": "未寫原因分析"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "開機中不正常操作",
+          "items": [
+            {
+              "code": null,
+              "name": "開機中不正常操作"
+            },
+            {
+              "code": null,
+              "name": "設備誤操作"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "檢修疏失",
+          "items": [
+            {
+              "code": null,
+              "name": "檢修疏失"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": null,
+      "name": "外部干擾",
+      "factors": [
+        {
+          "code": null,
+          "name": "外部干擾",
+          "items": [
+            {
+              "code": null,
+              "name": "受干擾"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": null,
+      "name": "設備故障",
+      "factors": [
+        {
+          "code": null,
+          "name": "00.MVB 多功能車輛匯流排",
+          "items": [
+            {
+              "code": null,
+              "name": "線材"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "01.MMI 操作面盤",
+          "items": [
+            {
+              "code": null,
+              "name": "MMI操作面盤"
+            },
+            {
+              "code": null,
+              "name": "MMI-CF卡"
+            },
+            {
+              "code": null,
+              "name": "USB插槽"
+            },
+            {
+              "code": null,
+              "name": "USB硬體"
+            },
+            {
+              "code": null,
+              "name": "USB資料"
+            },
+            {
+              "code": null,
+              "name": "USB三合一跳線"
+            },
+            {
+              "code": null,
+              "name": "USB連接線"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "02.DX數位介面單元",
+          "items": [
+            {
+              "code": null,
+              "name": "DXH"
+            },
+            {
+              "code": null,
+              "name": "DXL"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "03.VDX安全數位介面單元",
+          "items": [
+            {
+              "code": null,
+              "name": "VDX安全數位介面單元"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "04.BTM感應子傳輸模組",
+          "items": [
+            {
+              "code": null,
+              "name": "BTM感應子傳輸模組"
+            },
+            {
+              "code": null,
+              "name": "BTM軟體"
+            },
+            {
+              "code": null,
+              "name": "CAU天線"
+            },
+            {
+              "code": null,
+              "name": "CABLE"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "速度距離處理器",
+          "items": [
+            {
+              "code": null,
+              "name": "COMC"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "05.SDU速度和距離裝置",
+          "items": [
+            {
+              "code": null,
+              "name": "SDU1"
+            },
+            {
+              "code": null,
+              "name": "SDU2"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "06.RU數位記錄器",
+          "items": [
+            {
+              "code": null,
+              "name": "RU數位記錄器"
+            },
+            {
+              "code": null,
+              "name": "RU-CF卡"
+            },
+            {
+              "code": null,
+              "name": "SDP車速顯示器"
+            },
+            {
+              "code": null,
+              "name": "PRSCV車次轉換器"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "07.VCU 車輛控制單元",
+          "items": [
+            {
+              "code": null,
+              "name": "VCU"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "08.轉速計",
+          "items": [
+            {
+              "code": null,
+              "name": "TG轉速器"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "09.繼電器",
+          "items": [
+            {
+              "code": null,
+              "name": "FIR"
+            },
+            {
+              "code": null,
+              "name": "RIR"
+            },
+            {
+              "code": null,
+              "name": "CCR"
+            },
+            {
+              "code": null,
+              "name": "EBFR"
+            },
+            {
+              "code": null,
+              "name": "SBFR2"
+            },
+            {
+              "code": null,
+              "name": "CAB1R"
+            },
+            {
+              "code": null,
+              "name": "CAB2R"
+            },
+            {
+              "code": null,
+              "name": "TCOR"
+            },
+            {
+              "code": null,
+              "name": "AUXR"
+            },
+            {
+              "code": null,
+              "name": "BPER"
+            },
+            {
+              "code": null,
+              "name": "RCAR"
+            },
+            {
+              "code": null,
+              "name": "EBR"
+            },
+            {
+              "code": null,
+              "name": "RBR"
+            },
+            {
+              "code": null,
+              "name": "SBR"
+            },
+            {
+              "code": null,
+              "name": "SBFR1"
+            },
+            {
+              "code": null,
+              "name": "SBFR3"
+            },
+            {
+              "code": null,
+              "name": "EB2R"
+            },
+            {
+              "code": null,
+              "name": "EB1R"
+            },
+            {
+              "code": null,
+              "name": "FORX"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "10.開關類",
+          "items": [
+            {
+              "code": null,
+              "name": "蜂鳴器"
+            },
+            {
+              "code": null,
+              "name": "ATP電源(ATPMN)"
+            },
+            {
+              "code": null,
+              "name": "TI-CB斷流開關"
+            },
+            {
+              "code": null,
+              "name": "壓力開關"
+            },
+            {
+              "code": null,
+              "name": "類比閥"
+            },
+            {
+              "code": null,
+              "name": "EBMV緊急緊軔電磁閥"
+            },
+            {
+              "code": null,
+              "name": "ATP隔離開關"
+            },
+            {
+              "code": null,
+              "name": "ATP方向轉換開關"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": null,
+      "name": "不明原因",
+      "factors": [
+        {
+          "code": null,
+          "name": "返段測試正常",
+          "items": [
+            {
+              "code": null,
+              "name": "返段測試正常"
+            }
+          ]
+        },
+        {
+          "code": null,
+          "name": "異地重開正常",
+          "items": [
+            {
+              "code": null,
+              "name": "返段測試正常"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": null,
+      "name": "非ATP故障",
+      "factors": [
+        {
+          "code": null,
+          "name": "非ATP故障",
+          "items": [
+            {
+              "code": null,
+              "name": "非ATP故障"
+            },
+            {
+              "code": null,
+              "name": "地上設備故障"
+            },
+            {
+              "code": null,
+              "name": "車輛其他設備故障"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

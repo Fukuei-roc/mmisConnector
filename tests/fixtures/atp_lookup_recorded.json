@@ -1,0 +1,29 @@
+[
+  {
+    "level": "cause",
+    "names": [
+      "其它",
+      "人為因素",
+      "外部干擾",
+      "設備故障",
+      "不明原因",
+      "非ATP故障"
+    ],
+    "page_total": 6
+  },
+  {
+    "level": "factor",
+    "names": [
+      "返段測試正常",
+      "異地重開正常"
+    ],
+    "page_total": 2
+  },
+  {
+    "level": "item",
+    "names": [
+      "返段測試正常"
+    ],
+    "page_total": 1
+  }
+]

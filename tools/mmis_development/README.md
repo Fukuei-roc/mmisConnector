@@ -40,6 +40,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢故障通報關聯的查修工單 | 輸入通報號；取得關聯的 CA 查修工單清單。 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
 | 查詢故障通報的故障分析 | 輸入通報號；取得事故現象、處理概況、故障原因、處理情形及改善對策。 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
 | 查詢故障通報關聯的 ATP 故障分析 | 輸入已勾選 ATP 故障的通報號；取得故障要因、故障因子及故障項目。 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` |
+| 匯出 ATP 故障分析選項 | 自動遍歷故障要因、故障因子及故障項目，輸出完整階層樹。 | `python -m tools.mmis_development.export_atp_fault_analysis_options 1151012-36` |
 | 查詢故障通報關聯的工單 | 輸入通報號；取得關聯的段檢修工單清單。 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
 | 查詢未處理故障通報 | 無需輸入；取得本段未處理故障通報清單。 | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
@@ -61,6 +62,14 @@ python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14 --ai-
 ```
 
 第一個指令只查詢 MMIS，不呼叫 OpenAI API。加上 `--ai-analysis` 後，工具會在原查詢完成後產生「故障原因」、「處理情形」、「改善對策」，並合併至 JSON 最後的「故障分析」物件；此模式會產生 API 費用，需先設定 `OPENAI_API_KEY`。設定方式見根目錄 `README.md`。
+
+ATP 選項匯出工具屬於 Development / Diagnostic Tool。從專案根目錄執行：
+
+```powershell
+python -m tools.mmis_development.export_atp_fault_analysis_options 1151012-36
+```
+
+參數需為已勾選 ATP 故障、目前可查詢的通報號。工具使用 `.env` 建立有效 MMIS Session，僅以 HTTP 查詢與暫態 UI 選項事件讀取資料，不送出儲存或其他業務寫入事件。完整成功時會在專案根目錄原子更新 UTF-8 JSON `atp_fault_analysis_options.json`，內容包含三層選項樹、統計與狀態。若部分分支失敗，會將路徑與原因寫到 `atp_fault_analysis_options.partial.json`，原有完整 JSON 不受影響；登入或初始查詢失敗則不更新檔案。重新執行完整成功時會更新原有 JSON。
 
 ## Future Development
 
