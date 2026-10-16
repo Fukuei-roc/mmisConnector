@@ -111,8 +111,8 @@ def test_default_model_and_effort_are_luna_medium(monkeypatch, tmp_path):
 
 
 def test_prompts_are_separate_and_loadable():
-    system = ai._read_prompt("SystemPrompt.md")
-    user = ai._read_prompt("UserPrompt.md")
+    system = ai._read_prompt("system.md")
+    user = ai._read_prompt("user.md")
     assert "{{事故現象}}" not in system
     assert all("{{" + key + "}}" in user for key in ("事故現象", "處理概況", "MMIS_JSON"))
 

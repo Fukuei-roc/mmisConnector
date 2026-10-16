@@ -24,6 +24,7 @@ from ..auth import MMISClientError
 
 
 ROOT = Path(__file__).resolve().parents[3]
+FAULT_ANALYSIS_PROMPTS = ROOT / "prompts" / "fault_analysis"
 FIELDS = ("故障原因", "處理情形", "改善對策")
 CATEGORIES = {"車輛面：", "維修面：", "運用面：", "管理面："}
 SCHEMA = {
@@ -65,7 +66,7 @@ class OpenAIAnalysisConfig:
 
 def _read_prompt(name: str) -> str:
     try:
-        prompt = (ROOT / name).read_text(encoding="utf-8-sig").strip()
+        prompt = (FAULT_ANALYSIS_PROMPTS / name).read_text(encoding="utf-8-sig").strip()
     except OSError as exc:
         raise MMISClientError(f"無法讀取 {name}") from exc
     if not prompt:
@@ -91,10 +92,10 @@ def build_user_prompt(result: dict[str, Any], template: str) -> str:
     }
     for field in values:
         if "{{" + field + "}}" not in template:
-            raise MMISClientError(f"UserPrompt.md 缺少 {{{{{field}}}}} 佔位符")
+            raise MMISClientError(f"user.md 缺少 {{{{{field}}}}} 佔位符")
     unknown = set(re.findall(r"\{\{([^{}]+)\}\}", template)) - set(values)
     if unknown:
-        raise MMISClientError("UserPrompt.md 包含不支援的佔位符")
+        raise MMISClientError("user.md 包含不支援的佔位符")
     # Regex replacement is one pass: braces inside MMIS JSON are never interpreted.
     return PLACEHOLDERS.sub(lambda match: str(values[match.group(1)]), template)
 
@@ -221,8 +222,8 @@ def _retry_delay(exc: Exception, attempt: int) -> float:
 
 def analyze_fault_notice(result: dict[str, Any], *, client: OpenAI | None = None) -> dict[str, str]:
     config = OpenAIAnalysisConfig.from_env()
-    system = _read_prompt("SystemPrompt.md")
-    user = build_user_prompt(result, _read_prompt("UserPrompt.md"))
+    system = _read_prompt("system.md")
+    user = build_user_prompt(result, _read_prompt("user.md"))
     client = client or OpenAI(api_key=config.api_key, timeout=config.timeout_seconds, max_retries=0)
     try:
         return validate_analysis(_request(client, config, system, user))

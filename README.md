@@ -107,8 +107,8 @@ OPENAI_TIMEOUT_SECONDS=120
 
 系統環境變數優先於 `.env`。若帳號無法存取預設模型，可用 `OPENAI_MODEL` 指定
 帳號可用且支援 Responses API Structured Outputs 的模型；不會自動改用其他模型。
-規則位於根目錄 [SystemPrompt.md](SystemPrompt.md)，每次事故資料模板位於
-[UserPrompt.md](UserPrompt.md)，兩者於每次執行時讀取。送交 AI 的是原始查詢 JSON
+規則位於 [prompts/fault_analysis/system.md](prompts/fault_analysis/system.md)，每次事故資料模板位於
+[prompts/fault_analysis/user.md](prompts/fault_analysis/user.md)，兩者於每次執行時讀取。送交 AI 的是原始查詢 JSON
 副本，會排除其中舊的三個結論欄位，保留事故現象、處理概況及全部工單明細；
 不按車號篩選。
 
