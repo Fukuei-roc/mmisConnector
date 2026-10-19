@@ -171,6 +171,7 @@ def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.Mon
     assert list(parsed)[-1:] == ["故障分析素材"]
     assert list(parsed)[list(parsed).index("是ATP故障") + 1] == "結案狀態檢查"
     assert list(parsed["結案狀態檢查"]) == [
+        "Sufficient Data for Fault Analysis",
         "Fault Analysis Completed",
         "All Depot Maintenance Work Orders Closed",
         "Depot Maintenance Work Orders Pending Approval",
@@ -178,6 +179,7 @@ def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.Mon
         "ATP Fault Analysis Incomplete",
     ]
     assert parsed["結案狀態檢查"] == {
+        "Sufficient Data for Fault Analysis": None,
         "Fault Analysis Completed": True,
         "All Depot Maintenance Work Orders Closed": False,
         "Depot Maintenance Work Orders Pending Approval": False,

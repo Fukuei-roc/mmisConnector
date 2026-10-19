@@ -59,10 +59,15 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 ```powershell
 python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14
 python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14 --ai-analysis
+python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14 --check-analysis-readiness
 python -m tools.mmis_development.query_fault_notice_full_detail 1151012-36 --ai-analysis
 ```
 
 第一個指令只查詢 MMIS，不呼叫 OpenAI API。加上 `--ai-analysis` 後，工具會在原查詢完成後產生「故障原因」、「處理情形」、「改善對策」，並合併至 JSON 最後的「故障分析」物件；此模式會產生 API 費用，需先設定 `OPENAI_API_KEY`。設定方式見根目錄 `README.md`。
+
+三種模式互斥：只提供通報號時，僅查詢完整資料；`--ai-analysis` 查詢並產生故障分析；`--check-analysis-readiness` 查詢後使用 AI 判斷相關檢修工單是否已有與本次事故現象有關的後續處理紀錄，不產生故障分析文章。後兩者不可同時指定，且均需設定 `OPENAI_API_KEY`。
+
+`結案狀態檢查.Sufficient Data for Fault Analysis` 位於結案狀態檢查的第一欄：`true` 表示已有事故相關後續處理紀錄，`false` 表示沒有找到，`null` 表示未執行判斷。`true` 不代表故障已修妥，也不代表故障分析已完成。
 
 當 `--ai-analysis` 已指定且「是ATP故障」為布林 `true`，工具也會使用相同的故障通報與工單素材，獨立產生 `ATP故障分析_AI建議`。即使 MMIS 原有三欄分類已完整、部分空白或全部空白，仍會執行 ATP AI 分類。`ATP故障分析` 保留 MMIS 原始填報值；AI 建議會依 `data/atp_fault_analysis_options.json` 的父子選項結構驗證，兩者可以不同。若無法產生合法分類，結果不會包含 AI 建議，而會提供 `ATP故障分析_AI建議錯誤`；原始通報、MMIS 分類及既有故障分析仍保留。此功能只提供建議，不會寫入 MMIS。
 

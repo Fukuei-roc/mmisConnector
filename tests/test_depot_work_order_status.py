@@ -103,6 +103,7 @@ def test_execute_reuses_original_orders_and_preserves_output(
     assert list(result)[-1:] == ["故障分析素材"]
     assert list(result)[list(result).index("是ATP故障") + 1] == "結案狀態檢查"
     assert list(result["結案狀態檢查"]) == [
+        "Sufficient Data for Fault Analysis",
         "Fault Analysis Completed",
         "All Depot Maintenance Work Orders Closed",
         "Depot Maintenance Work Orders Pending Approval",
@@ -110,6 +111,7 @@ def test_execute_reuses_original_orders_and_preserves_output(
         "ATP Fault Analysis Incomplete",
     ]
     assert result["結案狀態檢查"] == {
+        "Sufficient Data for Fault Analysis": None,
         "Fault Analysis Completed": True,
         "All Depot Maintenance Work Orders Closed": True,
         "Depot Maintenance Work Orders Pending Approval": False,
