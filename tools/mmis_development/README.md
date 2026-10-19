@@ -44,6 +44,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢故障通報關聯的工單 | 輸入通報號；取得關聯的段檢修工單清單。 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
 | 查詢未處理故障通報 | 無需輸入；取得本段未處理故障通報清單。 | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
+| 自動處理 A/B 級未結案故障通報（第一階段） | 查詢並整理 A/B 級未結案通報，只擷取 8 個基本欄位；不修改 MMIS 資料。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices` |
 | 查詢臨時檢修工單明細 | 輸入工作單號；取得工單基本資料、已勾稽故障通報、維修程序概況及試車報告。 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C1-41264` |
 | 查詢日檢工單明細 | 輸入一個日檢工作單號；輸出基本資料、已勾稽故障通報、備註非空的檢修記錄、重要事項紀錄及檢修人員，完整欄位見 `recordings/README.md`。 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` |
 | 查詢定期檢修工單明細 | 輸入一個定期檢修工作單號；先查預設清單，確認零筆才切「所有記錄」重查。`success` 後依序直接輸出工作單、車組/車號、檢修級別、檢修日期、完工日期、工作單狀態六個第一層欄位。`維修程序概況` 取自檢修回報的紀事(備註)清單，含 count、records 及車組/車號、故障類別、故障類別說明、故障現象、故障原因、處置措施、材料編號(PA)、員工代號、人員姓名九欄。`檢修記錄` 只保留備註非空的列，含 count、records 及裝置名稱、檢修項目、回報結果、備註四欄。JSON 最後為動態資料頁簽的 `維修情形` 與 `維修情形(詳述)` 字串。 | `python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001` |
@@ -53,6 +54,13 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 
 最後一項會修改 MMIS 資料。只能在明確核准的受控 Live 驗證或人工單筆操作中使用；若
 結果不明，先人工確認，不得直接重送。
+
+自動處理 A/B 級未結案故障通報目前只執行第一階段。它在
+`data/unclosed_ab_fault_notices.db` 建立 15 欄的 `unclosed_ab_fault_notices` 資料表，
+以 `通報號` 為唯一鍵。僅寫入車次、車組/車號、發生日期、事故等級、ATP故障、故障現象、
+狀態及通報號八個基本欄位；六個結案狀態檢查欄位及備註固定為 SQLite `NULL`。
+每次查詢完整成功後以 transaction 完整覆蓋舊資料，包含重新清空預留欄位；查詢或寫入
+失敗則保留舊資料。此工具不查詢完整明細、不呼叫 AI，也不修改 MMIS 系統資料。
 
 查詢完整故障通報時，可依需求選擇是否產生 AI 故障分析：
 

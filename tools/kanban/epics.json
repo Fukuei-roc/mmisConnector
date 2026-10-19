@@ -149,6 +149,16 @@
       ]
     },
     {
+      "name": "自動處理 A-B 級未結案故障通報",
+      "definition": "逐階段建立未結案 A/B 級故障通報處理流程；第一階段僅查詢與全量覆蓋 SQLite snapshot。",
+      "stories": [
+        {
+          "name": "建立 A/B 級未結案通報 snapshot",
+          "definition": "重用既有唯讀查詢，驗證完整結果，將八個基本欄位原子覆蓋至十五欄 SQLite 資料表。"
+        }
+      ]
+    },
+    {
       "name": "MMIS HTTP 故障分析查詢",
       "definition": "以 HTTP-only 流程依通報號取得故障分析與關聯工單的故障分析素材，並輸出 stdout JSON。",
       "stories": [

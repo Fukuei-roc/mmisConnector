@@ -14,4 +14,5 @@ __pycache__/
 .pytest_cache/
 tmp/
 data/*.sqlite3*
+/data/unclosed_ab_fault_notices.db*
 
