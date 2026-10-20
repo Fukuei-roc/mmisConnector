@@ -1,0 +1,36 @@
+{
+  "id": "MMIS-046",
+  "title": "查詢首筆通報並回填六個結案狀態檢查值",
+  "content": "在既有完整 snapshot 成功後，僅查詢來源結果第一筆的完整通報，驗證六個檢查值並以通報號更新該筆 SQLite；其餘通報保持 NULL。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-20",
+  "epic": "自動處理 A-B 級未結案故障通報",
+  "userStory": "查詢首筆通報結案狀態檢查",
+  "dependsOn": ["MMIS-045"],
+  "order": 46,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {
+    "featureSpec": "ai/artifacts/自動處理 A-B 級未結案故障通報/feature-spec.md",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "ai/artifacts/自動處理 A-B 級未結案故障通報/task-cards/MMIS-046.md",
+    "verificationReport": "ai/artifacts/自動處理 A-B 級未結案故障通報/verification/MMIS-046.md",
+    "pr": ""
+  },
+  "refs": [
+    "tools/mmis_development/auto_process_unclosed_ab_fault_notices.py",
+    "tools/mmis_development/query_fault_notice_full_detail.py",
+    "tests/test_auto_process_unclosed_ab_fault_notices.py"
+  ],
+  "evidence": {
+    "commands": ["python -m pytest", "python -m compileall -q src tests", "python -m compileall -q tools/mmis_development", "python -m pip check", "git diff --check"],
+    "findings": ["389 passed, 39 skipped", "資料庫唯讀檢查有 32 筆，六欄原本全部 NULL", "新流程只回填來源第一筆，預設五個布林值且不呼叫 AI", "明確旗標可查詢第六欄"],
+    "residual": "未自行執行 Live MMIS；現有資料庫需重新執行新程式才會回填檢查值。"
+  },
+  "comments": [{"name": "專案使用者", "time": "2026-10-20", "text": "指定建立資料庫後只查詢第一筆通報，將六個結案狀態檢查值回填。"}]
+}

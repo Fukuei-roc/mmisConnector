@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from mmis_connector.auth import MMISClientError, MMISConfig, MMISSession
 from mmis_connector.fault_notices.query import (
@@ -18,11 +21,20 @@ from mmis_connector.fault_notices.query import (
     UnclosedFaultNoticeQuery,
 )
 
+from . import query_fault_notice_full_detail
 
-USAGE = "python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices"
+
+USAGE = (
+    "python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices "
+    "[--check-analysis-readiness]"
+)
 DATABASE_RELATIVE_PATH = Path("data/unclosed_ab_fault_notices.db")
 DATABASE_PATH = Path(__file__).resolve().parents[2] / DATABASE_RELATIVE_PATH
 TABLE_NAME = "unclosed_ab_fault_notices"
+WAITING_DATABASE_NAME = "a_level_fault_notices_awaiting_closure.db"
+WAITING_DATABASE_RELATIVE_PATH = Path("data") / WAITING_DATABASE_NAME
+WAITING_TABLE_NAME = "a_level_fault_notices_awaiting_closure"
+WAITING_RECHECK_VERSION = 1
 BASIC_FIELDS = (
     "車次", "車組/車號", "發生日期", "事故等級", "ATP故障",
     "故障現象", "狀態", "通報號",
@@ -36,6 +48,8 @@ RESERVED_FIELDS = (
     "ATP Fault Analysis Incomplete",
     "備註",
 )
+DETAIL_CHECK_FIELDS = RESERVED_FIELDS[:-1]
+DETAIL_CHECK_SELECT = ", ".join(f'"{field}"' for field in DETAIL_CHECK_FIELDS)
 COLUMNS = (
     ("車次", "TEXT", 0, 0),
     ("車組/車號", "TEXT", 0, 0),
@@ -73,6 +87,16 @@ INSERT INTO unclosed_ab_fault_notices
  "故障現象", "狀態", "通報號")
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 '''
+CREATE_WAITING_TABLE_SQL = '''
+CREATE TABLE a_level_fault_notices_awaiting_closure (
+    "通報號" TEXT PRIMARY KEY NOT NULL,
+    "新增日期" TEXT NOT NULL
+)
+'''
+WAITING_COLUMNS = (
+    ("通報號", "TEXT", 1, 1),
+    ("新增日期", "TEXT", 1, 0),
+)
 
 
 @dataclass
@@ -80,12 +104,67 @@ class SyncState:
     transaction_started: bool = False
     rolled_back: bool = False
     old_data_unchanged: bool = True
+    snapshot_saved: bool = False
+    detail_transaction_started: bool = False
+    detail_rolled_back: bool = False
+    detail_updated: bool = False
+    details_processed: int = 0
+    waiting_transaction_started: bool = False
+    waiting_rolled_back: bool = False
+    waiting_added: int = 0
+    records_fetched: int = 0
+    records_skipped_waiting: int = 0
+    records_loaded: int = 0
+    waiting_rechecked: bool = False
 
 
 def fetch_unclosed_fault_notices() -> dict[str, Any]:
     client = MMISSession(MMISConfig.from_env())
     client.login()
     return UnclosedFaultNoticeQuery(client).run()
+
+
+def fetch_fault_notice_detail(
+    notice_number: str, *, check_analysis_readiness: bool
+) -> dict[str, Any]:
+    args = [notice_number]
+    if check_analysis_readiness:
+        args.append("--check-analysis-readiness")
+    for attempt in range(3):
+        try:
+            return query_fault_notice_full_detail.execute(
+                args, include_analysis_materials=check_analysis_readiness
+            )
+        except Exception:
+            if attempt == 2:
+                raise
+            if attempt == 1:
+                time.sleep(1)
+    raise AssertionError("unreachable")
+
+
+def prepare_detail_checks(
+    detail: dict[str, Any], notice_number: str, *, require_readiness: bool
+) -> tuple[int | None, ...]:
+    if not isinstance(detail, dict) or detail.get("通報號") != notice_number:
+        raise MMISClientError("完整通報查詢回傳的通報號不符")
+    checks = detail.get("結案狀態檢查")
+    if not isinstance(checks, dict) or any(
+        field not in checks for field in DETAIL_CHECK_FIELDS
+    ):
+        raise MMISClientError("完整通報查詢缺少結案狀態檢查欄位")
+    values: list[int | None] = []
+    for field in DETAIL_CHECK_FIELDS:
+        value = checks[field]
+        if field == DETAIL_CHECK_FIELDS[0] and not require_readiness:
+            if value is not None:
+                raise MMISClientError(f"完整通報查詢的 {field} 型別錯誤")
+            values.append(None)
+        elif type(value) is bool:
+            values.append(int(value))
+        else:
+            raise MMISClientError(f"完整通報查詢的 {field} 型別錯誤")
+    return tuple(values)
 
 
 def prepare_rows(result: dict[str, Any]) -> list[tuple[Any, ...]]:
@@ -132,6 +211,64 @@ def prepare_rows(result: dict[str, Any]) -> list[tuple[Any, ...]]:
     return rows
 
 
+def _check_waiting_schema(connection: sqlite3.Connection, database: str = "main") -> None:
+    actual = connection.execute(
+        f"PRAGMA {database}.table_info({WAITING_TABLE_NAME})"
+    ).fetchall()
+    if len(actual) != len(WAITING_COLUMNS):
+        raise MMISClientError("既有等候結案資料表 schema 不符")
+    for column, expected in zip(actual, WAITING_COLUMNS, strict=True):
+        _, name, kind, not_null, default, primary_key = column
+        if ((name, kind.upper(), not_null, primary_key) != expected
+                or default is not None):
+            raise MMISClientError("既有等候結案資料表 schema 不符")
+
+
+def load_waiting_notice_numbers(database_path: Path) -> set[str]:
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(database_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (WAITING_TABLE_NAME,),
+        ).fetchone()
+        if exists is None:
+            connection.execute(CREATE_WAITING_TABLE_SQL)
+            connection.execute(f"PRAGMA user_version = {WAITING_RECHECK_VERSION}")
+        _check_waiting_schema(connection)
+        numbers = {
+            row[0] for row in connection.execute(
+                f'SELECT "通報號" FROM {WAITING_TABLE_NAME}'
+            )
+        }
+        connection.commit()
+        return numbers
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def waiting_recheck_pending(database_path: Path) -> bool:
+    connection = sqlite3.connect(database_path)
+    try:
+        _check_waiting_schema(connection)
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        return version < WAITING_RECHECK_VERSION
+    finally:
+        connection.close()
+
+
+def is_awaiting_closure(incident_level: str, checks: tuple[int | None, ...]) -> bool:
+    return incident_level == "A" and checks[1:] == (1, 1, 0, 0, 0)
+
+
+def current_added_at() -> str:
+    return datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
+
+
 def _check_schema(connection: sqlite3.Connection) -> None:
     actual = connection.execute(f"PRAGMA table_info({TABLE_NAME})").fetchall()
     if len(actual) != len(COLUMNS):
@@ -144,13 +281,28 @@ def _check_schema(connection: sqlite3.Connection) -> None:
 
 
 def replace_rows(
-    rows: list[tuple[Any, ...]], database_path: Path, state: SyncState
+    rows: list[tuple[Any, ...]], database_path: Path, state: SyncState,
+    *, waiting_database_path: Path | None = None,
 ) -> int:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(database_path)
     try:
+        if waiting_database_path is not None:
+            connection.execute("ATTACH DATABASE ? AS waiting", (str(waiting_database_path),))
+            if any(
+                connection.execute(f"PRAGMA {name}.journal_mode").fetchone()[0].lower() == "wal"
+                for name in ("main", "waiting")
+            ):
+                raise MMISClientError("重新清查需要兩個資料庫使用非 WAL journal mode")
         connection.execute("BEGIN IMMEDIATE")
         state.transaction_started = True
+        if waiting_database_path is not None:
+            _check_waiting_schema(connection, "waiting")
+            version = connection.execute("PRAGMA waiting.user_version").fetchone()[0]
+            if version >= WAITING_RECHECK_VERSION:
+                raise MMISClientError("等候結案資料庫已完成重新清查，請重新執行")
+            connection.execute(f"DELETE FROM waiting.{WAITING_TABLE_NAME}")
+            connection.execute(f"PRAGMA waiting.user_version = {WAITING_RECHECK_VERSION}")
         exists = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
             (TABLE_NAME,),
@@ -183,23 +335,165 @@ def replace_rows(
         connection.close()
 
 
+def update_detail_checks(
+    notice_number: str,
+    checks: tuple[int | None, ...],
+    database_path: Path,
+    state: SyncState,
+) -> None:
+    assignments = ", ".join(f'"{field}" = ?' for field in DETAIL_CHECK_FIELDS)
+    selected = ", ".join(f'"{field}"' for field in (*DETAIL_CHECK_FIELDS, "備註"))
+    connection = sqlite3.connect(database_path)
+    transaction_started = False
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        transaction_started = True
+        state.detail_transaction_started = True
+        _check_schema(connection)
+        cursor = connection.execute(
+            f'UPDATE {TABLE_NAME} SET {assignments} WHERE "通報號" = ?',
+            (*checks, notice_number),
+        )
+        if cursor.rowcount != 1:
+            raise MMISClientError("完整通報檢查值未更新唯一通報")
+        stored = connection.execute(
+            f'SELECT {selected} FROM {TABLE_NAME} WHERE "通報號" = ?',
+            (notice_number,),
+        ).fetchone()
+        if stored != (*checks, None):
+            raise MMISClientError("完整通報檢查值寫入驗證失敗")
+        connection.commit()
+        state.detail_updated = True
+    except Exception:
+        if transaction_started:
+            try:
+                connection.rollback()
+                state.detail_rolled_back = True
+            except sqlite3.Error:
+                pass
+        raise
+    finally:
+        connection.close()
+
+
+def move_to_waiting(
+    notice_number: str,
+    checks: tuple[int | None, ...],
+    database_path: Path,
+    waiting_database_path: Path,
+    state: SyncState,
+) -> None:
+    connection = sqlite3.connect(database_path)
+    transaction_started = False
+    try:
+        connection.execute("ATTACH DATABASE ? AS waiting", (str(waiting_database_path),))
+        if any(
+            connection.execute(f"PRAGMA {name}.journal_mode").fetchone()[0].lower() == "wal"
+            for name in ("main", "waiting")
+        ):
+            raise MMISClientError("等候結案搬移需要兩個資料庫使用非 WAL journal mode")
+        connection.execute("BEGIN IMMEDIATE")
+        transaction_started = True
+        state.waiting_transaction_started = True
+        _check_schema(connection)
+        _check_waiting_schema(connection, "waiting")
+        stored = connection.execute(
+            f'SELECT "事故等級", {DETAIL_CHECK_SELECT} '
+            f'FROM {TABLE_NAME} WHERE "通報號" = ?',
+            (notice_number,),
+        ).fetchone()
+        if stored != ("A", *checks) or not is_awaiting_closure("A", checks):
+            raise MMISClientError("等候結案通報的主資料不符")
+        added_at = current_added_at()
+        connection.execute(
+            f'INSERT INTO waiting.{WAITING_TABLE_NAME} ("通報號", "新增日期") '
+            "VALUES (?, ?)",
+            (notice_number, added_at),
+        )
+        deleted = connection.execute(
+            f'DELETE FROM {TABLE_NAME} WHERE "通報號" = ?',
+            (notice_number,),
+        )
+        waiting_row = connection.execute(
+            f'SELECT "新增日期" FROM waiting.{WAITING_TABLE_NAME} '
+            'WHERE "通報號" = ?',
+            (notice_number,),
+        ).fetchone()
+        if deleted.rowcount != 1 or waiting_row != (added_at,):
+            raise MMISClientError("等候結案通報搬移驗證失敗")
+        connection.commit()
+        state.waiting_added += 1
+    except Exception:
+        if transaction_started:
+            try:
+                connection.rollback()
+                state.waiting_rolled_back = True
+            except sqlite3.Error:
+                pass
+        raise
+    finally:
+        connection.close()
+
+
 def execute(
     args: Sequence[str], *, database_path: Path | None = None,
+    waiting_database_path: Path | None = None,
     state: SyncState | None = None,
 ) -> dict[str, Any]:
-    if args:
+    if list(args) not in ([], ["--check-analysis-readiness"]):
         raise MMISClientError(f"用法: {USAGE}")
+    check_analysis_readiness = bool(args)
     state = state if state is not None else SyncState()
-    rows = prepare_rows(fetch_unclosed_fault_notices())
-    saved = replace_rows(rows, database_path or DATABASE_PATH, state)
+    all_rows = prepare_rows(fetch_unclosed_fault_notices())
+    state.records_fetched = len(all_rows)
+    path = database_path or DATABASE_PATH
+    waiting_path = waiting_database_path or path.with_name(WAITING_DATABASE_NAME)
+    waiting_numbers = load_waiting_notice_numbers(waiting_path)
+    recheck_all = waiting_recheck_pending(waiting_path)
+    if recheck_all:
+        waiting_numbers = set()
+    number_index = BASIC_FIELDS.index("通報號")
+    rows = [row for row in all_rows if row[number_index] not in waiting_numbers]
+    state.records_skipped_waiting = len(all_rows) - len(rows)
+    state.records_loaded = len(rows)
+    saved = replace_rows(
+        rows, path, state,
+        waiting_database_path=waiting_path if recheck_all else None,
+    )
+    state.waiting_rechecked = recheck_all
+    state.snapshot_saved = True
+    for row in rows:
+        notice_number = row[number_index]
+        detail = fetch_fault_notice_detail(
+            notice_number, check_analysis_readiness=check_analysis_readiness
+        )
+        checks = prepare_detail_checks(
+            detail, notice_number, require_readiness=check_analysis_readiness
+        )
+        update_detail_checks(notice_number, checks, path, state)
+        state.details_processed += 1
+        if is_awaiting_closure(row[BASIC_FIELDS.index("事故等級")], checks):
+            move_to_waiting(notice_number, checks, path, waiting_path, state)
     return {
         "success": True,
         "status": "success",
         "database": str(DATABASE_RELATIVE_PATH).replace("\\", "/"),
         "table": TABLE_NAME,
-        "records_fetched": len(rows),
-        "records_saved": saved,
+        "records_fetched": len(all_rows),
+        "records_skipped_waiting": state.records_skipped_waiting,
+        "waiting_rechecked": recheck_all,
+        "records_loaded": saved,
+        "records_saved": saved - state.waiting_added,
         "sync_mode": "full_replace",
+        "detail_records_processed": state.details_processed,
+        "detail_checks_saved": (6 if check_analysis_readiness else 5)
+        * (state.details_processed - state.waiting_added),
+        "awaiting_closure_database": str(WAITING_DATABASE_RELATIVE_PATH).replace("\\", "/"),
+        "awaiting_closure_added": state.waiting_added,
+        "awaiting_closure_total": len(waiting_numbers) + state.waiting_added,
+        "analysis_readiness": (
+            "completed" if rows and check_analysis_readiness else "not_run"
+        ),
     }
 
 
@@ -221,6 +515,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             "transaction_started": state.transaction_started,
             "rolled_back": state.rolled_back,
             "old_data_unchanged": state.old_data_unchanged,
+            "snapshot_saved": state.snapshot_saved,
+            "detail_transaction_started": state.detail_transaction_started,
+            "detail_rolled_back": state.detail_rolled_back,
+            "detail_updated": state.detail_updated,
+            "detail_records_processed": state.details_processed,
+            "waiting_transaction_started": state.waiting_transaction_started,
+            "waiting_rolled_back": state.waiting_rolled_back,
+            "awaiting_closure_added": state.waiting_added,
+            "records_fetched": state.records_fetched,
+            "records_skipped_waiting": state.records_skipped_waiting,
+            "waiting_rechecked": state.waiting_rechecked,
+            "records_loaded": state.records_loaded,
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1

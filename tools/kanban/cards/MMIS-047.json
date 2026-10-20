@@ -1,0 +1,36 @@
+{
+  "id": "MMIS-047",
+  "title": "逐筆查詢並保存等候結案的 A 級通報",
+  "content": "完整查詢 A/B 級來源，排除既有等候結案通報，逐筆讀完整資料；符合指定五項檢查值的 A 級通報原子搬移至獨立且不重置的 SQLite。",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-20",
+  "epic": "自動處理 A-B 級未結案故障通報",
+  "userStory": "保存等候結案的 A 級通報",
+  "dependsOn": ["MMIS-046"],
+  "order": 47,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {
+    "featureSpec": "ai/artifacts/自動處理 A-B 級未結案故障通報/feature-spec.md",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "ai/artifacts/自動處理 A-B 級未結案故障通報/task-cards/MMIS-047.md",
+    "verificationReport": "ai/artifacts/自動處理 A-B 級未結案故障通報/verification/MMIS-047.md",
+    "pr": ""
+  },
+  "refs": [
+    "tools/mmis_development/auto_process_unclosed_ab_fault_notices.py",
+    "tests/test_auto_process_unclosed_ab_fault_notices.py",
+    "tools/mmis_development/README.md"
+  ],
+  "evidence": {
+    "commands": ["python -m pytest tests/test_auto_process_unclosed_ab_fault_notices.py", "python -m pytest", "python -m compileall -q src tests", "python -m compileall -q tools/mmis_development", "python -m pip check", "git diff --check"],
+    "findings": ["50 focused tests passed", "401 passed, 39 skipped", "持久等候結案庫、逐筆查詢、五欄條件、跨庫 rollback 與重跑跳過均由離線測試驗證"],
+    "residual": "未自行執行 Live MMIS；大量通報時每筆完整明細查詢會建立新 session，實際時長待受控驗證。"
+  },
+  "comments": [{"name": "專案使用者", "time": "2026-10-20", "text": "指定獨立持久資料庫、A 級五項檢查條件、重跑跳過及改為查詢主表全部通報。"}]
+}

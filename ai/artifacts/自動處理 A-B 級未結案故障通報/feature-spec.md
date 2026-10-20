@@ -75,3 +75,20 @@
 - E2E：本階段不執行 Live MMIS。
 - 視覺：不適用。
 - 手動：檢查 diff、README 與指令輸出。
+
+## 第二階段：只查詢首筆完整通報（2026-10-20）
+
+- 使用者要求保留既有 15 欄 snapshot，成功儲存後只查詢本次來源結果第一筆通報，不處理後續筆數。
+- 直接呼叫 `query_fault_notice_full_detail.execute()`；核對通報號及六欄布林／NULL 型別，以單筆 SQLite transaction 回填；備註及其他通報的檢查欄位維持 `NULL`。
+- 預設模式沿用完整通報查詢的非 AI 契約：第一欄 `Sufficient Data for Fault Analysis` 為 `NULL`，其餘五欄為布林值。明確加 `--check-analysis-readiness` 才呼叫付費 OpenAI 並要求第一欄為布林值；不執行 `--ai-analysis`。
+- 明細查詢或更新失敗時，已成功建立的完整 snapshot 保留，錯誤 JSON 標示 snapshot 與單筆更新階段；不回滾整個 snapshot。
+- 此增量不改變第一階段已完成任務卡 MMIS-045 的歷史驗證紀錄。
+
+## 第三階段：逐筆查詢並保存等候結案 A 級通報（2026-10-20）
+
+- 英文名稱：A-Level Fault Notices Awaiting Closure；獨立資料庫 `data/a_level_fault_notices_awaiting_closure.db`，資料表 `a_level_fault_notices_awaiting_closure`。
+- 等候結案庫只有 `通報號`（TEXT PRIMARY KEY NOT NULL）與 `新增日期`（TEXT NOT NULL）；新增日期為當下台北時間的 ISO 日期時間，不因重跑改寫。
+- 本次 MMIS 清單仍須完整查詢與驗證。讀取既有等候結案通報號後，從主 snapshot 排除；餘下全部通報依來源順序逐筆呼叫完整通報 Python 查詢。
+- A 級且五個指定欄位依序為 true、true、false、false、false 時，將通報號與新增日期寫入等候結案庫，並從主資料表移除；`Sufficient Data for Fault Analysis` 不參與判斷。B 級或未符合者留在主資料表。
+- 兩庫搬移使用 SQLite attached database transaction，確保單筆插入與刪除一起 commit 或 rollback。明細失敗時保留已完成 snapshot 和先前成功處理的結果，錯誤摘要標示部分進度。
+- 預設模式不呼叫 AI；明確加入 `--check-analysis-readiness` 才對待處理通報逐筆啟用付費 AI。

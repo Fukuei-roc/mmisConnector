@@ -57,7 +57,9 @@ def evaluate_depot_work_order_status(work_orders: Sequence[dict[str, Any]]) -> d
     }
 
 
-def execute(args: Sequence[str]) -> dict[str, Any]:
+def execute(
+    args: Sequence[str], *, include_analysis_materials: bool = True
+) -> dict[str, Any]:
     options = _parse_args(args)
     notice = normalize_fault_notice(options.通報號)
     client = MMISSession(MMISConfig.from_env())
@@ -78,7 +80,8 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     atp_index = next(index for index, (key, _) in enumerate(items) if key == "是ATP故障")
     items.insert(atp_index + 1, ("結案狀態檢查", status_checks))
     result = dict(items)
-    result["故障分析素材"] = collect_analysis_materials(client, result["段修工單"])
+    if include_analysis_materials or options.check_analysis_readiness or options.ai_analysis:
+        result["故障分析素材"] = collect_analysis_materials(client, result["段修工單"])
     if options.check_analysis_readiness:
         status_checks["Sufficient Data for Fault Analysis"] = check_analysis_readiness(result)
     if options.ai_analysis:

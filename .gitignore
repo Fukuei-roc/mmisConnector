@@ -15,4 +15,5 @@ __pycache__/
 tmp/
 data/*.sqlite3*
 /data/unclosed_ab_fault_notices.db*
+/data/a_level_fault_notices_awaiting_closure.db*
 

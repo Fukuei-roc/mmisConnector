@@ -190,6 +190,21 @@ def test_cli_appends_materials_without_mutating_original(monkeypatch: pytest.Mon
     assert {key: parsed[key] for key in original} == original
 
 
+def test_internal_status_query_skips_analysis_materials(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = {
+        "通報號": "1150910-14", "是ATP故障": False,
+        "段修工單": [{"工作單": "115-C2-33584"}], "CA查修工單": [],
+        "故障分析": {"故障原因": "甲", "處理情形": "乙", "改善對策": "丙"},
+    }
+    monkeypatch.setattr(tool.MMISConfig, "from_env", lambda: SimpleNamespace())
+    monkeypatch.setattr(tool, "MMISSession", lambda _: SimpleNamespace(login=lambda: None))
+    monkeypatch.setattr(tool.FaultNoticeFullDetailReader, "run", lambda self, _: source)
+    monkeypatch.setattr(tool, "collect_analysis_materials", lambda client, rows: pytest.fail("不應查詢工單素材"))
+    result = tool.execute(["1150910-14"], include_analysis_materials=False)
+    assert "故障分析素材" not in result
+    assert result["結案狀態檢查"]["Fault Analysis Completed"] is True
+
+
 def test_cli_materials_use_work_order_label_for_temporary_repairs(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
