@@ -104,23 +104,23 @@ def test_sorts_all_rows_by_level_date_and_vehicle(monkeypatch, tmp_path, capsys)
     assert hashlib.sha256(database.read_bytes()).digest() == before
 
 
-def test_status_checks_add_no_fills_or_notes(monkeypatch, tmp_path, capsys) -> None:
+def test_status_checks_write_matching_export_notes_only(monkeypatch, tmp_path, capsys) -> None:
     database = tmp_path / "unclosed_ab_fault_notices.db"
     output = tmp_path / "xlsx"
     output.mkdir()
     cases = [
-        ("light", None, 1, 1, 0, 0, "=SUM(1,2)"),
-        ("olive", 1, 0, 1, 0, 0, "原備註"),
-        ("yellow", 0, 0, 0, 0, 0, None),
-        ("yellow-other-flags", 0, 0, 1, 1, 1, None),
-        ("overlap", 0, 1, 1, 0, 0, None),
-        ("plain", None, 0, 1, 0, 0, None),
-        ("ca-open", 1, 0, 1, 1, 0, None),
-        ("atp-open", 1, 0, 1, 0, 1, None),
+        ("depot-open", (None, 1, 0, 0, 0, 0), "原備註", "段修工單未處理完成"),
+        ("depot-approval", (None, 1, 0, 1, 0, 0), None, "等候段修工單簽核中"),
+        ("closable", (None, 1, 1, 0, 0, 0), None, "可結案"),
+        ("unprocessed", (0, 0, 0, 0, 0, 0), None, "未處理"),
+        ("different-sufficient", (1, 1, 0, 0, 0, 0), "=SUM(1,2)", "=SUM(1,2)"),
+        ("different-ca", (None, 1, 0, 0, 1, 0), None, None),
+        ("different-atp", (None, 1, 0, 0, 0, 1), None, None),
+        ("unchecked", (None, None, None, None, None, None), "原備註", "原備註"),
     ]
     with sqlite3.connect(database) as connection:
         connection.execute(snapshot.CREATE_TABLE_SQL)
-        for index, (number, sufficient, completed, pending, ca_open, atp_open, note) in enumerate(cases):
+        for index, (number, status, note, _) in enumerate(cases):
             connection.execute(
                 snapshot.INSERT_SQL,
                 ("123", f"EMU{index}", f"2026/10/{21 - index:02d}",
@@ -130,11 +130,12 @@ def test_status_checks_add_no_fills_or_notes(monkeypatch, tmp_path, capsys) -> N
                 'UPDATE unclosed_ab_fault_notices SET '
                 '"Sufficient Data for Fault Analysis" = ?, '
                 '"Fault Analysis Completed" = ?, '
+                '"All Depot Maintenance Work Orders Closed" = ?, '
                 '"Depot Maintenance Work Orders Pending Approval" = ?, '
                 '"CA Repair Work Orders Not Closed" = ?, '
                 '"ATP Fault Analysis Incomplete" = ?, "備註" = ? '
                 'WHERE "通報號" = ?',
-                (sufficient, completed, pending, ca_open, atp_open, note, number),
+                (*status, note, number),
             )
     before = hashlib.sha256(database.read_bytes()).digest()
     monkeypatch.setattr(snapshot, "DATABASE_PATH", database)
@@ -152,11 +153,9 @@ def test_status_checks_add_no_fills_or_notes(monkeypatch, tmp_path, capsys) -> N
             for row_number in range(2, sheet.max_row + 1)
         }
         assert all(cell.fill.patternType is None for row in sheet.iter_rows() for cell in row)
-        assert exported["light"][1].value == "=SUM(1,2)"
-        assert exported["light"][1].data_type == "s"
-        assert exported["olive"][1].value == "原備註"
-        for number in ("yellow", "yellow-other-flags", "overlap", "plain", "ca-open", "atp-open"):
-            assert exported[number][1].value is None
+        for number, _, _, expected_note in cases:
+            assert exported[number][1].value == expected_note
+        assert exported["different-sufficient"][1].data_type == "s"
     finally:
         workbook.close()
     assert hashlib.sha256(database.read_bytes()).digest() == before
@@ -173,6 +172,29 @@ def test_missing_database_does_not_create_it(monkeypatch, tmp_path, capsys) -> N
     result = json.loads(capsys.readouterr().out)
     assert result["success"] is False
     assert not database.exists()
+    assert list(output.iterdir()) == []
+
+
+def test_invalid_hidden_status_rejects_export(monkeypatch, tmp_path, capsys) -> None:
+    database = tmp_path / "invalid-status.db"
+    output = tmp_path / "xlsx"
+    output.mkdir()
+    with sqlite3.connect(database) as connection:
+        connection.execute(snapshot.CREATE_TABLE_SQL)
+        connection.execute(
+            snapshot.INSERT_SQL,
+            ("123", "EMU900", "2026/10/21", "B", 0, "故障", "處理中", "1151021-01"),
+        )
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "ATP Fault Analysis Incomplete" = 2'
+        )
+    monkeypatch.setattr(snapshot, "DATABASE_PATH", database)
+    monkeypatch.setenv(xlsx.ENV_NAME, str(output))
+
+    assert offline.main([]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["success"] is False
+    assert "ATP Fault Analysis Incomplete" in result["message"]
     assert list(output.iterdir()) == []
 
 

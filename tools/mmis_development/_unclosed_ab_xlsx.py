@@ -6,7 +6,7 @@ import math
 import os
 import sqlite3
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -154,6 +154,7 @@ def export_xlsx(
     row_height: float | None = None, vertical_alignment: str = "center",
     column_widths: Mapping[str, float] | None = None,
     sort_columns: tuple[str, ...] = (),
+    row_transform: Callable[[tuple[Any, ...]], tuple[Any, ...]] | None = None,
 ) -> dict[str, Any]:
     directory = output_directory if output_directory is not None else configured_output_directory()
     if not directory.is_dir():
@@ -175,6 +176,8 @@ def export_xlsx(
             (row[index] is None, str(row[index]) if row[index] is not None else "")
             for index in sort_indices
         ))
+    if row_transform is not None:
+        rows = [row_transform(row) for row in rows]
     visible_rows = [tuple(row[index] for index in visible_indices) for row in rows]
     workbook = build_workbook(
         visible_rows, visible_columns, boolean_columns,
