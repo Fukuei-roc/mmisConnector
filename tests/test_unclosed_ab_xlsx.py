@@ -15,6 +15,7 @@ from mmis_connector.fault_notices.query import (
     UNCLOSED_DEPOT_NAME, UNCLOSED_INCIDENT_LEVELS, UNCLOSED_QUERY_NAME,
 )
 from tools.mmis_development import auto_process_unclosed_ab_fault_notices as tool
+from tools.mmis_development import export_unclosed_ab_fault_notices_from_db as offline
 from tools.mmis_development import _unclosed_ab_xlsx as xlsx
 
 
@@ -86,29 +87,30 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     exported = Path(summary["xlsx_export"]["output_file"])
     assert summary["operation"] == "sync_and_export_xlsx"
     assert summary["records_saved"] == summary["xlsx_export"]["records_exported"] == 1
-    assert summary["xlsx_export"]["columns_exported"] == 15
+    assert summary["xlsx_export"]["columns_exported"] == 9
     assert exported.parent == output
     with sqlite3.connect(database) as connection:
         assert connection.execute('SELECT "通報號" FROM unclosed_ab_fault_notices').fetchone()[0] == "new"
     workbook = load_workbook(exported)
     assert workbook.sheetnames == [xlsx.SHEET_NAME]
     sheet = workbook.active
-    assert tuple(cell.value for cell in sheet[1]) == columns()
-    assert sheet.max_column == 15 and sheet.max_row == 2
+    assert tuple(cell.value for cell in sheet[1]) == tuple(
+        name for name in columns() if name not in tool.DETAIL_CHECK_FIELDS
+    )
+    assert sheet.max_column == 9 and sheet.max_row == 2
     assert sheet.cell(2, 8).value == "new"
     assert sheet.cell(2, 8).fill.patternType is None
     assert sheet.cell(2, 5).value is True
-    assert sheet.cell(2, 9).value is None
-    assert sheet.cell(2, 10).value is True
-    assert sheet.cell(2, 15).value is None
+    assert sheet.cell(2, 9).value == "段修工單未處理完成"
+    assert sheet.row_dimensions[1].height == sheet.row_dimensions[2].height == 15.5
     for cell in sheet[1]:
         assert cell.font.name == xlsx.FONT_NAME and cell.font.sz == 12
         assert cell.font.bold and cell.alignment.horizontal == "center"
-        assert cell.alignment.vertical == "center"
+        assert cell.alignment.vertical == "top"
     for cell in sheet[2]:
         assert cell.font.name == xlsx.FONT_NAME and cell.font.sz == 12
         assert not cell.font.bold and cell.alignment.horizontal == "left"
-        assert cell.alignment.vertical == "center"
+        assert cell.alignment.vertical == "top"
     workbook.close()
 
 
@@ -120,6 +122,25 @@ def test_existing_sqlite_is_replaced_before_export(monkeypatch, tmp_path, capsys
     workbook = load_workbook(summary["xlsx_export"]["output_file"])
     assert [row[7] for row in workbook.active.iter_rows(min_row=2, values_only=True)] == ["new"]
     workbook.close()
+
+
+def test_export_resets_previous_analysis_note(monkeypatch, tmp_path, capsys) -> None:
+    database, _ = setup_offline(monkeypatch, tmp_path, source("one"))
+    tool.replace_rows(tool.prepare_rows(result(source("one"))), database, tool.SyncState())
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "備註" = ?',
+            ("填寫故障分析完成",),
+        )
+
+    assert tool.main(["--export-xlsx"]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["fault_analysis_candidates"] == 0
+    assert summary["xlsx_export"]["status"] == "success"
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            'SELECT "備註" FROM unclosed_ab_fault_notices'
+        ).fetchone()[0] is None
 
 
 @pytest.mark.parametrize("value,expected", [(1, True), (0, False), (None, None)])
@@ -202,8 +223,24 @@ def test_first_filename_has_no_suffix_and_empty_snapshot_has_header(monkeypatch,
     assert "_2.xlsx" not in exported.name
     workbook = load_workbook(exported)
     assert workbook.active.max_row == 1
-    assert tuple(cell.value for cell in workbook.active[1]) == columns()
+    assert tuple(cell.value for cell in workbook.active[1]) == tuple(
+        name for name in columns() if name not in tool.DETAIL_CHECK_FIELDS
+    )
     workbook.close()
+
+
+def test_sync_delegates_export_to_standalone_command(monkeypatch, tmp_path, capsys) -> None:
+    database, _ = setup_offline(monkeypatch, tmp_path, source("one"))
+    calls = []
+
+    def export(args, *, database_path, expected_records):
+        calls.append((args, database_path, expected_records))
+        return {"xlsx_export": {"status": "success", "records_exported": 1}}
+
+    monkeypatch.setattr(offline, "execute", export)
+    assert tool.main(["--export-xlsx"]) == 0
+    assert calls == [([], database, 1)]
+    assert json.loads(capsys.readouterr().out)["xlsx_export"]["records_exported"] == 1
 
 
 def test_quoted_env_path_and_missing_or_relative_setting(monkeypatch, tmp_path) -> None:

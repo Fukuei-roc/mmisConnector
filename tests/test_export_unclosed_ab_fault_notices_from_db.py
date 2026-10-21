@@ -5,11 +5,26 @@ import hashlib
 import json
 import sqlite3
 
+import pytest
+
 from openpyxl import load_workbook
 
 from tools.mmis_development import auto_process_unclosed_ab_fault_notices as snapshot
 from tools.mmis_development import export_unclosed_ab_fault_notices_from_db as offline
 from tools.mmis_development import _unclosed_ab_xlsx as xlsx
+
+
+def test_expected_records_rejects_changed_snapshot(monkeypatch, tmp_path) -> None:
+    database = tmp_path / "unclosed_ab_fault_notices.db"
+    output = tmp_path / "xlsx"
+    output.mkdir()
+    with sqlite3.connect(database) as connection:
+        connection.execute(snapshot.CREATE_TABLE_SQL)
+    monkeypatch.setenv(xlsx.ENV_NAME, str(output))
+
+    with pytest.raises(xlsx.XlsxExportError, match="筆數"):
+        offline.execute([], database_path=database, expected_records=1)
+    assert list(output.iterdir()) == []
 
 
 def test_exports_existing_database_without_sync(monkeypatch, tmp_path, capsys) -> None:

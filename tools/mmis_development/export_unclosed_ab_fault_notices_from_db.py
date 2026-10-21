@@ -49,7 +49,10 @@ def annotate_row(row: tuple[Any, ...]) -> tuple[Any, ...]:
     return tuple(updated)
 
 
-def execute(args: Sequence[str], *, database_path: Path | None = None) -> dict[str, Any]:
+def execute(
+    args: Sequence[str], *, database_path: Path | None = None,
+    expected_records: int | None = None,
+) -> dict[str, Any]:
     if args:
         raise MMISClientError(f"用法: {USAGE}")
     try:
@@ -70,6 +73,7 @@ def execute(args: Sequence[str], *, database_path: Path | None = None) -> dict[s
         column_widths=COLUMN_WIDTHS,
         sort_columns=("事故等級", "發生日期", "車組/車號"),
         row_transform=annotate_row,
+        expected_records=expected_records,
     )
     return {
         "success": True,

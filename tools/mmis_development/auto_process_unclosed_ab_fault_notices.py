@@ -323,16 +323,8 @@ def replace_rows(
         if exists is None:
             connection.execute(CREATE_TABLE_SQL)
         _check_schema(connection)
-        completed_notes = connection.execute(
-            f'SELECT "通報號" FROM {TABLE_NAME} WHERE "備註" = ?',
-            ("填寫故障分析完成",),
-        ).fetchall()
         connection.execute(f"DELETE FROM {TABLE_NAME}")
         connection.executemany(INSERT_SQL, rows)
-        connection.executemany(
-            f'UPDATE {TABLE_NAME} SET "備註" = ? WHERE "通報號" = ?',
-            (("填寫故障分析完成", number) for (number,) in completed_notes),
-        )
         saved = connection.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
         if saved != len(rows):
             raise MMISClientError("故障通報寫入筆數不符")
@@ -342,10 +334,9 @@ def replace_rows(
         ).fetchone():
             raise MMISClientError("故障通報預留欄位未保持 NULL")
         if connection.execute(
-            f'SELECT 1 FROM {TABLE_NAME} WHERE "備註" IS NOT NULL '
-            'AND "備註" != ? LIMIT 1', ("填寫故障分析完成",),
+            f'SELECT 1 FROM {TABLE_NAME} WHERE "備註" IS NOT NULL LIMIT 1'
         ).fetchone():
-            raise MMISClientError("故障通報預留欄位備註保留驗證失敗")
+            raise MMISClientError("故障通報預留欄位備註未重置")
         connection.commit()
         state.old_data_unchanged = False
         return saved
@@ -377,10 +368,8 @@ def update_detail_checks(
         state.detail_transaction_started = True
         _check_schema(connection)
         cursor = connection.execute(
-            f'UPDATE {TABLE_NAME} SET {assignments}, '
-            '"備註" = CASE WHEN ? = 0 THEN NULL ELSE "備註" END '
-            'WHERE "通報號" = ?',
-            (*checks, checks[1], notice_number),
+            f'UPDATE {TABLE_NAME} SET {assignments} WHERE "通報號" = ?',
+            (*checks, notice_number),
         )
         if cursor.rowcount != 1:
             raise MMISClientError("完整通報檢查值未更新唯一通報")
@@ -654,17 +643,11 @@ def execute(
             }
             return result
         state.sync_completed = True
-        try:
-            from ._unclosed_ab_xlsx import export_xlsx
-        except ModuleNotFoundError as exc:
-            if exc.name == "openpyxl":
-                raise MMISClientError("未安裝 openpyxl，無法匯出 XLSX") from exc
-            raise
-        result["xlsx_export"] = export_xlsx(
-            path, TABLE_NAME, tuple(column[0] for column in COLUMNS),
-            frozenset({"ATP故障", *DETAIL_CHECK_FIELDS}),
-            expected_records=result["records_saved"],
-        )
+        from . import export_unclosed_ab_fault_notices_from_db
+
+        result["xlsx_export"] = export_unclosed_ab_fault_notices_from_db.execute(
+            [], database_path=path, expected_records=result["records_saved"],
+        )["xlsx_export"]
     return result
 
 

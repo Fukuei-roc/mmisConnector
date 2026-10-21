@@ -24,6 +24,7 @@ def test_atp_fault_analysis_incomplete(atp_fault, analysis, incomplete):
 @pytest.mark.parametrize(("statuses", "closed", "pending"), [
     (["工單結案"], True, False),
     (["工單結案", "工單結案"], True, False),
+    (["工單結案", "工單結案", "核簽中"], False, True),
     (["工單結案", "簽核中"], False, True),
     (["簽核中", "簽核中"], False, True),
     (["工單結案", "執行中"], False, False),

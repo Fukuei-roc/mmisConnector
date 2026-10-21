@@ -515,7 +515,7 @@ def test_analysis_write_failure_leaves_note_and_completion_flag_unchanged(
     assert row["Fault Analysis Completed"] == 0
 
 
-def test_second_sync_keeps_written_note_when_mmis_analysis_is_complete(
+def test_second_sync_resets_written_note_when_mmis_analysis_is_complete(
     monkeypatch, tmp_path,
 ) -> None:
     path = tmp_path / "notice.db"
@@ -537,7 +537,7 @@ def test_second_sync_keeps_written_note_when_mmis_analysis_is_complete(
     assert tool.execute([], database_path=path)["fault_analysis_written"] == 0
     assert calls == ["incomplete"]
     row = read_rows(path)[0]
-    assert row["備註"] == "填寫故障分析完成"
+    assert row["備註"] is None
     assert row["Fault Analysis Completed"] == 1
 
 

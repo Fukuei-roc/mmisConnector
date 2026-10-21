@@ -98,19 +98,22 @@ python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --check-
 資料錯誤不重試整筆完整明細；網路或其他明細錯誤仍依既有重試與失敗處理。已完成的
 snapshot、先前成功搬移的通報及該筆已保存的五項非 AI 檢查結果都會保留。
 
-`--export-xlsx` 不是匯出舊資料庫的獨立模式：每次都重新查詢 MMIS 並完成 SQLite
-全量覆蓋及逐筆處理，只有完整成功才讀取已提交的 `unclosed_ab_fault_notices` 資料表。
+`--export-xlsx` 每次都重新查詢 MMIS 並完成 SQLite 全量覆蓋及逐筆處理。
+新快照的 `備註` 一律重置為 `NULL`；只有本次確認故障分析寫入成功後，才寫入
+「填寫故障分析完成」。
+完整成功後，它呼叫 `export_unclosed_ab_fault_notices_from_db`，從已提交的
+`unclosed_ab_fault_notices` 資料表產生相同的九欄 Excel，並核對本次同步筆數。
 若同步失敗或資料充分性仍有未完成項目，不會產生 XLSX。匯出失敗不回滾已成功同步的
 SQLite，JSON 會區分同步與匯出結果並使用非零 exit code。
 
-要從目前的 SQLite 資料直接產生相同格式的 Excel，從專案根目錄執行：
+要從目前的 SQLite 資料獨立產生 Excel，從專案根目錄執行：
 
 ```powershell
 python -m tools.mmis_development.export_unclosed_ab_fault_notices_from_db
 ```
 
-此測試指令只讀取 `data/unclosed_ab_fault_notices.db`，不重新查詢 MMIS，也不重建資料庫。
-它沿用 `--export-xlsx` 的輸出資料夾設定和檔名規則。Excel 只輸出八個基本欄位與
+此指令只讀取 `data/unclosed_ab_fault_notices.db`，不重新查詢 MMIS，也不重建資料庫。
+`--export-xlsx` 使用此指令的輸出資料夾設定、檔名與 Excel 格式。Excel 只輸出八個基本欄位與
 `備註`，省略六個英文結案狀態檢查欄位。所有列高固定為 15.5 pt，儲存格垂直靠上；
 欄寬依序為 6.5、11.8、14.5、10.6、10.6、70、10.6、14.9、40。
 資料依「事故等級」、「發生日期」、「車組/車號」逐級遞增排序；相同排序鍵保留
@@ -118,7 +121,7 @@ python -m tools.mmis_development.export_unclosed_ab_fault_notices_from_db
 將 `(NULL,1,0,0,0,0)`、`(NULL,1,0,1,0,0)`、`(NULL,1,1,0,0,0)`、`(0,0,0,0,0,0)`
 的備註依序設為「段修工單未處理完成」、「等候段修工單簽核中」、「可結案」、「未處理」。
 其他組合保留 SQLite 原備註；只修改 Excel，不回寫 SQLite。
-原同步指令的 Excel 格式不受影響。
+同步指令與獨立匯出指令使用相同的 Excel 格式。
 
 請在專案 `.env` 設定 `UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR` 為既有的絕對輸出資料夾。
 Excel 只有 `AB級未處理故障通報` 一張工作表，依資料表順序匯出全部 15 欄；SQLite
