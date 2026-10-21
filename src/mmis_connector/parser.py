@@ -356,6 +356,25 @@ def parse_labeled_textareas(
     return result
 
 
+def parse_labeled_textarea_targets(
+    response_text: str, *, field_names: tuple[str, ...]
+) -> dict[str, str]:
+    """Find each editable textarea through its visible label."""
+    _, soup = _parse_maximo_markup(response_text)
+    result: dict[str, str] = {}
+    for field_name in field_names:
+        targets = {
+            str(label["for"])
+            for label in soup.find_all("label", attrs={"for": True})
+            if label.get_text(" ", strip=True).rstrip(":：").strip() == field_name
+            and soup.find("textarea", id=str(label["for"])) is not None
+        }
+        if len(targets) != 1:
+            raise MMISClientError(f"故障分析回應找不到唯一的「{field_name}」欄位")
+        result[field_name] = targets.pop()
+    return result
+
+
 def parse_fault_notice_link_controls(
     response_text: str,
 ) -> FaultNoticeLinkControls:

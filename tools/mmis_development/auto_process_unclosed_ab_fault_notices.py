@@ -21,6 +21,9 @@ from mmis_connector.fault_notices.query import (
     UnclosedFaultNoticeQuery,
 )
 from mmis_connector.fault_notices.analysis_readiness import AnalysisEvidenceIncomplete
+from mmis_connector.fault_notices.analysis_writer import (
+    FaultNoticeAnalysisWriter, WRITE_FIELDS,
+)
 
 from . import query_fault_notice_full_detail
 
@@ -122,6 +125,8 @@ class SyncState:
     waiting_rechecked: bool = False
     export_requested: bool = False
     sync_completed: bool = False
+    analysis_target: str | None = None
+    analysis_written: int = 0
 
 
 def fetch_unclosed_fault_notices() -> dict[str, Any]:
@@ -318,16 +323,29 @@ def replace_rows(
         if exists is None:
             connection.execute(CREATE_TABLE_SQL)
         _check_schema(connection)
+        completed_notes = connection.execute(
+            f'SELECT "通報號" FROM {TABLE_NAME} WHERE "備註" = ?',
+            ("填寫故障分析完成",),
+        ).fetchall()
         connection.execute(f"DELETE FROM {TABLE_NAME}")
         connection.executemany(INSERT_SQL, rows)
+        connection.executemany(
+            f'UPDATE {TABLE_NAME} SET "備註" = ? WHERE "通報號" = ?',
+            (("填寫故障分析完成", number) for (number,) in completed_notes),
+        )
         saved = connection.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
         if saved != len(rows):
             raise MMISClientError("故障通報寫入筆數不符")
-        reserved_not_null = " OR ".join(f'"{field}" IS NOT NULL' for field in RESERVED_FIELDS)
+        reserved_not_null = " OR ".join(f'"{field}" IS NOT NULL' for field in DETAIL_CHECK_FIELDS)
         if connection.execute(
             f"SELECT 1 FROM {TABLE_NAME} WHERE {reserved_not_null} LIMIT 1"
         ).fetchone():
             raise MMISClientError("故障通報預留欄位未保持 NULL")
+        if connection.execute(
+            f'SELECT 1 FROM {TABLE_NAME} WHERE "備註" IS NOT NULL '
+            'AND "備註" != ? LIMIT 1', ("填寫故障分析完成",),
+        ).fetchone():
+            raise MMISClientError("故障通報預留欄位備註保留驗證失敗")
         connection.commit()
         state.old_data_unchanged = False
         return saved
@@ -350,7 +368,7 @@ def update_detail_checks(
     state: SyncState,
 ) -> None:
     assignments = ", ".join(f'"{field}" = ?' for field in DETAIL_CHECK_FIELDS)
-    selected = ", ".join(f'"{field}"' for field in (*DETAIL_CHECK_FIELDS, "備註"))
+    selected = ", ".join(f'"{field}"' for field in DETAIL_CHECK_FIELDS)
     connection = sqlite3.connect(database_path)
     transaction_started = False
     try:
@@ -359,8 +377,10 @@ def update_detail_checks(
         state.detail_transaction_started = True
         _check_schema(connection)
         cursor = connection.execute(
-            f'UPDATE {TABLE_NAME} SET {assignments} WHERE "通報號" = ?',
-            (*checks, notice_number),
+            f'UPDATE {TABLE_NAME} SET {assignments}, '
+            '"備註" = CASE WHEN ? = 0 THEN NULL ELSE "備註" END '
+            'WHERE "通報號" = ?',
+            (*checks, checks[1], notice_number),
         )
         if cursor.rowcount != 1:
             raise MMISClientError("完整通報檢查值未更新唯一通報")
@@ -368,7 +388,7 @@ def update_detail_checks(
             f'SELECT {selected} FROM {TABLE_NAME} WHERE "通報號" = ?',
             (notice_number,),
         ).fetchone()
-        if stored != (*checks, None):
+        if stored != checks:
             raise MMISClientError("完整通報檢查值寫入驗證失敗")
         connection.commit()
         state.detail_updated = True
@@ -419,6 +439,52 @@ def update_analysis_readiness(
         raise
     finally:
         connection.close()
+
+
+def pending_analysis_numbers(database_path: Path) -> list[str]:
+    with sqlite3.connect(database_path) as connection:
+        _check_schema(connection)
+        return [row[0] for row in connection.execute(
+            f'SELECT "通報號" FROM {TABLE_NAME} '
+            'WHERE "Sufficient Data for Fault Analysis" = 1 '
+            'AND "Fault Analysis Completed" = 0 AND "備註" IS NULL '
+            'ORDER BY rowid'
+        )]
+
+
+def fetch_ai_analysis(notice_number: str) -> dict[str, str]:
+    detail = query_fault_notice_full_detail.execute([notice_number, "--ai-analysis"])
+    if detail.get("通報號") != notice_number:
+        raise MMISClientError("AI 故障分析通報號不符")
+    if detail.get("結案狀態檢查", {}).get("Fault Analysis Completed") is not False:
+        raise MMISClientError("MMIS 故障分析狀態已變更，停止寫入")
+    analysis = detail.get("故障分析")
+    if not isinstance(analysis, dict) or any(
+        not isinstance(analysis.get(field), str) or not analysis[field].strip()
+        for field in WRITE_FIELDS
+    ):
+        raise MMISClientError("AI 故障分析缺少三個非空欄位")
+    return {field: analysis[field] for field in WRITE_FIELDS}
+
+
+def write_ai_analysis(notice_number: str, values: dict[str, str]) -> None:
+    client = MMISSession(MMISConfig.from_env())
+    client.login()
+    FaultNoticeAnalysisWriter(client).run(notice_number, values)
+
+
+def mark_analysis_written(notice_number: str, database_path: Path) -> None:
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        _check_schema(connection)
+        cursor = connection.execute(
+            f'UPDATE {TABLE_NAME} SET "備註" = ? WHERE "通報號" = ? '
+            'AND "Sufficient Data for Fault Analysis" = 1 '
+            'AND "Fault Analysis Completed" = 0 AND "備註" IS NULL',
+            ("填寫故障分析完成", notice_number),
+        )
+        if cursor.rowcount != 1:
+            raise MMISClientError("故障分析已寫入 MMIS，但本機備註更新條件不符")
 
 
 def move_to_waiting(
@@ -569,6 +635,17 @@ def execute(
             "completed" if state.readiness_queries else "not_run"
         ),
     }
+    if result["success"]:
+        pending = pending_analysis_numbers(path)
+        result["fault_analysis_candidates"] = len(pending)
+        for notice_number in pending:
+            state.analysis_target = notice_number
+            values = fetch_ai_analysis(notice_number)
+            write_ai_analysis(notice_number, values)
+            mark_analysis_written(notice_number, path)
+            state.analysis_written += 1
+            state.analysis_target = None
+    result["fault_analysis_written"] = state.analysis_written
     if export_requested:
         result["operation"] = "sync_and_export_xlsx"
         if not result["success"]:
@@ -624,6 +701,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "records_skipped_waiting": state.records_skipped_waiting,
             "waiting_rechecked": state.waiting_rechecked,
             "records_loaded": state.records_loaded,
+            "fault_analysis_current_notice": state.analysis_target,
+            "fault_analysis_written": state.analysis_written,
         }
         if state.export_requested:
             result["operation"] = "sync_and_export_xlsx"

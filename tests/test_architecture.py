@@ -109,6 +109,7 @@ def test_every_production_module_is_classified() -> None:
         "fault_notices/__init__.py",
         "fault_notices/ai_analysis.py",
         "fault_notices/analysis_readiness.py",
+        "fault_notices/analysis_writer.py",
         "fault_notices/atp_ai_analysis.py",
         "fault_notices/analysis_materials.py",
         "fault_notices/atp_reader.py",

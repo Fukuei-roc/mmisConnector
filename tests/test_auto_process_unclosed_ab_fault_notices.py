@@ -465,6 +465,11 @@ def test_default_queries_readiness_only_for_incomplete_analysis(
         return result
 
     monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    written = []
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: {
+        field: field + "內容" for field in tool.WRITE_FIELDS
+    })
+    monkeypatch.setattr(tool, "write_ai_analysis", lambda number, values: written.append(number))
     summary = tool.execute([], database_path=path)
     assert calls == [
         ("incomplete", False), ("incomplete", True), ("complete", False),
@@ -478,6 +483,90 @@ def test_default_queries_readiness_only_for_incomplete_analysis(
     assert summary["analysis_readiness_saved"] == 1
     assert summary["analysis_readiness"] == "completed"
     assert summary["detail_checks_saved"] == 11
+    assert written == (["incomplete"] if readiness else [])
+    assert rows["incomplete"]["備註"] == (
+        "填寫故障分析完成" if readiness else None
+    )
+    assert summary["fault_analysis_written"] == int(readiness)
+
+
+def test_analysis_write_failure_leaves_note_and_completion_flag_unchanged(
+    monkeypatch, tmp_path,
+) -> None:
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("incomplete")))
+    def detail(number, *, check_analysis_readiness):
+        result = detail_result(number, True if check_analysis_readiness else None)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = False
+        return result
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: {
+        field: field + "內容" for field in tool.WRITE_FIELDS
+    })
+    def fail_write(number, values):
+        raise MMISClientError("故障分析儲存結果不明")
+    monkeypatch.setattr(tool, "write_ai_analysis", fail_write)
+    with pytest.raises(MMISClientError, match="儲存結果不明"):
+        tool.execute([], database_path=path)
+    row = read_rows(path)[0]
+    assert row["備註"] is None
+    assert row["Sufficient Data for Fault Analysis"] == 1
+    assert row["Fault Analysis Completed"] == 0
+
+
+def test_second_sync_keeps_written_note_when_mmis_analysis_is_complete(
+    monkeypatch, tmp_path,
+) -> None:
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("incomplete")))
+    completed = False
+    def detail(number, *, check_analysis_readiness):
+        result = detail_result(number, True if check_analysis_readiness else None)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = completed
+        return result
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    calls = []
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: calls.append(number) or {
+        field: field + "內容" for field in tool.WRITE_FIELDS
+    })
+    monkeypatch.setattr(tool, "write_ai_analysis", lambda number, values: None)
+    assert tool.execute([], database_path=path)["fault_analysis_written"] == 1
+    completed = True
+    assert tool.execute([], database_path=path)["fault_analysis_written"] == 0
+    assert calls == ["incomplete"]
+    row = read_rows(path)[0]
+    assert row["備註"] == "填寫故障分析完成"
+    assert row["Fault Analysis Completed"] == 1
+
+
+def test_stale_written_note_is_cleared_if_mmis_analysis_is_incomplete(
+    monkeypatch, tmp_path,
+) -> None:
+    path = tmp_path / "notice.db"
+    run(monkeypatch, path, query_result(notice("incomplete")))
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "備註" = ?',
+            ("填寫故障分析完成",),
+        )
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("incomplete")))
+    def detail(number, *, check_analysis_readiness):
+        result = detail_result(number, True if check_analysis_readiness else None)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = False
+        return result
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: {
+        field: field + "內容" for field in tool.WRITE_FIELDS
+    })
+    def fail_write(number, values):
+        raise MMISClientError("儲存結果不明")
+    monkeypatch.setattr(tool, "write_ai_analysis", fail_write)
+    with pytest.raises(MMISClientError, match="儲存結果不明"):
+        tool.execute([], database_path=path)
+    assert read_rows(path)[0]["備註"] is None
 
 
 def test_readiness_failure_preserves_first_query_checks(monkeypatch, tmp_path, capsys) -> None:
