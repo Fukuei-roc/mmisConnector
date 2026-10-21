@@ -54,6 +54,7 @@ def test_auto_link_has_explicit_reusable_component_dependencies() -> None:
         "auto_link.store",
         "daily_inspection.linker",
         "daily_inspection.query",
+        "daily_inspection.reader",
         "fault_notices.query",
     }
 
@@ -161,7 +162,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
     tool_paths = [
         path
         for path in DEVELOPMENT_TOOLS.glob("*.py")
-        if path.name not in {"__init__.py", "_support.py"}
+        if path.name not in {"__init__.py", "_support.py", "_unclosed_ab_xlsx.py"}
     ]
 
     assert len(tool_paths) == 15

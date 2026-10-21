@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession, PageState
@@ -67,24 +68,31 @@ class DailyInspectionWorkOrderFaultNoticeLinker:
                 "故障通報勾稽結果不明，需人工確認；程式未自動重送"
             ) from exc
 
-        try:
-            confirmed_work_order, confirmation_response = self.detail_reader.open_detail(
-                normalized_work_order
-            )
+        for attempt in range(3):
+            if attempt == 2:
+                time.sleep(1)
+            try:
+                confirmed_work_order, confirmation_response = self.detail_reader.open_detail(
+                    normalized_work_order
+                )
+                _, fault_notices = parse_maximo_table(
+                    confirmation_response,
+                    required_headers=FAULT_HEADERS,
+                    table_summary=FAULT_TABLE_SUMMARY,
+                    normalize_line_breaks=True,
+                )
+            except MMISClientError as exc:
+                if attempt == 2:
+                    raise MMISClientError("勾稽後無法確認指定故障通報") from exc
+                continue
             if confirmed_work_order != normalized_work_order:
                 raise MMISClientError("勾稽後重新查詢的工作單不相符")
-            _, fault_notices = parse_maximo_table(
-                confirmation_response,
-                required_headers=FAULT_HEADERS,
-                table_summary=FAULT_TABLE_SUMMARY,
-                normalize_line_breaks=True,
-            )
-        except MMISClientError as exc:
-            raise MMISClientError("勾稽後無法確認指定故障通報") from exc
-        if not any(
-            record.get("故障通報號") == normalized_fault_notice
-            for record in fault_notices
-        ):
+            if any(
+                record.get("故障通報號") == normalized_fault_notice
+                for record in fault_notices
+            ):
+                break
+        else:
             raise MMISClientError("勾稽後無法確認指定故障通報")
 
         try:

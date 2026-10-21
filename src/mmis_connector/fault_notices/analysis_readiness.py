@@ -21,6 +21,10 @@ SCHEMA = {
 }
 
 
+class AnalysisEvidenceIncomplete(MMISClientError):
+    """A linked work order could not be read, so readiness is unknown."""
+
+
 def load_prompt(path: Path = PROMPT_PATH) -> str:
     try:
         prompt = path.read_text(encoding="utf-8-sig").strip()
@@ -45,7 +49,9 @@ def build_evidence(result: dict[str, Any]) -> str:
     for kind, orders in relevant.items():
         for order in orders:
             if order.get("查詢狀態") == "失敗":
-                raise MMISClientError(f"{kind} {order.get('工作單', '')} 查詢失敗，無法安全判斷資料充分性")
+                raise AnalysisEvidenceIncomplete(
+                    f"{kind} {order.get('工作單', '')} 查詢失敗，無法安全判斷資料充分性"
+                )
     analysis = result["故障分析"]
     evidence = {
         "事故現象": analysis.get("事故現象") or "",

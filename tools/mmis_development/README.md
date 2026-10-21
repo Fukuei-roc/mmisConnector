@@ -45,6 +45,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢未處理故障通報 | 無需輸入；取得本段未處理故障通報清單。 | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
 | 自動處理 A/B 級未結案故障通報（開發階段） | 完整儲存待處理 A/B 級通報，逐筆查詢結案狀態檢查，將符合條件的 A 級通報移入等候結案資料庫；不修改 MMIS 資料。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices` |
+| 自動處理 A/B 級未結案故障通報並匯出 XLSX | 先執行同一套 MMIS 查詢與 SQLite 全量同步，完整成功後再從本次更新的資料庫匯出 XLSX。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --export-xlsx` |
 | 查詢臨時檢修工單明細 | 輸入工作單號；取得工單基本資料、已勾稽故障通報、維修程序概況及試車報告。 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C1-41264` |
 | 查詢日檢工單明細 | 輸入一個日檢工作單號；輸出基本資料、已勾稽故障通報、備註非空的檢修記錄、重要事項紀錄及檢修人員，完整欄位見 `recordings/README.md`。 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` |
 | 查詢定期檢修工單明細 | 輸入一個定期檢修工作單號；先查預設清單，確認零筆才切「所有記錄」重查。`success` 後依序直接輸出工作單、車組/車號、檢修級別、檢修日期、完工日期、工作單狀態六個第一層欄位。`維修程序概況` 取自檢修回報的紀事(備註)清單，含 count、records 及車組/車號、故障類別、故障類別說明、故障現象、故障原因、處置措施、材料編號(PA)、員工代號、人員姓名九欄。`檢修記錄` 只保留備註非空的列，含 count、records 及裝置名稱、檢修項目、回報結果、備註四欄。JSON 最後為動態資料頁簽的 `維修情形` 與 `維修情形(詳述)` 字串。 | `python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001` |
@@ -68,7 +69,7 @@ Awaiting Closure」，資料表 `a_level_fault_notices_awaiting_closure` 只有 
   導入本次修復後，既有舊版等候結案資料庫會在下一次成功建立 snapshot 時清空一次，
   重新查詢全部 A/B 級未結案通報；之後的執行恢復保留等候結案名單並略過其中通報。
   這次重查與主資料庫 snapshot 在同一個 SQLite transaction 中完成，寫入失敗會回滾兩庫。
-  預設逐筆查詢完整通報的結案狀態時，不查詢額外的故障分析工單素材；完整通報查詢若發生錯誤，
+  首輪逐筆查詢完整通報的結案狀態時，不查詢額外的故障分析工單素材；完整通報查詢若發生錯誤，
   會立即重試一次，若仍失敗則等待 1 秒再試一次，三次均失敗才停止並回報失敗。
 每次完整查詢後，已在等候結案庫的通報號會從主 snapshot 排除，也不再查詢完整明細。
 
@@ -80,17 +81,34 @@ snapshot 完成後，工具依本次來源順序逐筆直接呼叫既有完整�
 通報號與新增日期寫入等候結案庫，並從主資料表移除。B 級通報不會進入等候結案庫。
 `Sufficient Data for Fault Analysis` 不參與此搬移條件。
 
-預設查詢不呼叫 AI，因此 `Sufficient Data for Fault Analysis` 保持 `NULL`，其餘五欄
-寫入布林結果對應的 `1` 或 `0`。若要為第一欄取得布林值，須明確執行：
+預設先查詢每筆通報的五項非 AI 結案檢查。只有 `Fault Analysis Completed` 為 `false` 的
+通報，才再次呼叫完整明細查詢的 `--check-analysis-readiness` 模式，將回傳的
+`Sufficient Data for Fault Analysis` 布林值寫入主資料庫的該欄；其餘通報的此欄維持
+SQLite `NULL`。第二次查詢不改寫先前儲存的其他五項檢查結果。這項判斷會使用付費
+OpenAI API，需設定 `OPENAI_API_KEY`，並將事故與相關工單素材送交 AI。若要沿用對每筆
+待處理通報都檢查資料充分性的舊模式，可明確執行：
 
 ```powershell
 python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --check-analysis-readiness
 ```
 
-此模式會對每筆尚未等候結案的通報呼叫付費 OpenAI API，需先設定 `OPENAI_API_KEY`，
-並將事故與相關工單素材送交 AI 判斷。兩種模式都不執行 `--ai-analysis`，也不修改 MMIS
-系統資料。若某筆完整通報查詢失敗，已完成的 snapshot 及先前成功搬移的通報仍會保留；
-錯誤 JSON 的 `detail_records_processed` 與 `awaiting_closure_added` 顯示本次部分進度。
+兩種模式都不執行 `--ai-analysis`，也不修改 MMIS 系統資料。若資料充分性查詢因相關
+工單證據不完整而無法判斷，正常模式會讓該筆欄位維持 `NULL`，繼續查後續通報，最後輸出
+`partial_success`、未完成通報清單及非零 exit code，不將未知結果寫成 `false`。這類確定性的
+資料錯誤不重試整筆完整明細；網路或其他明細錯誤仍依既有重試與失敗處理。已完成的
+snapshot、先前成功搬移的通報及該筆已保存的五項非 AI 檢查結果都會保留。
+
+`--export-xlsx` 不是匯出舊資料庫的獨立模式：每次都重新查詢 MMIS 並完成 SQLite
+全量覆蓋及逐筆處理，只有完整成功才讀取已提交的 `unclosed_ab_fault_notices` 資料表。
+若同步失敗或資料充分性仍有未完成項目，不會產生 XLSX。匯出失敗不回滾已成功同步的
+SQLite，JSON 會區分同步與匯出結果並使用非零 exit code。
+
+請在專案 `.env` 設定 `UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR` 為既有的絕對輸出資料夾。
+Excel 只有 `AB級未處理故障通報` 一張工作表，依資料表順序匯出全部 15 欄；SQLite
+`NULL` 為空白，布林 `1`／`0` 為 Excel `TRUE`／`FALSE`。所有儲存格使用微軟正黑體
+12 pt，標題粗體置中、資料靠左，依中英文內容估算欄寬，長文字自動換行並估算列高。
+檔名依台灣日期為 `AB級未處理故障通報_程式產生MMDD.xlsx`；同名時依序加 `_2`、
+`_3`，不覆蓋既有檔案。若輸出資料夾不存在，程式會回報錯誤，不自行建立路徑。
 
 查詢完整故障通報時，可依需求選擇是否產生 AI 故障分析：
 

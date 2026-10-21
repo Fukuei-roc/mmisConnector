@@ -16,6 +16,7 @@ from ..daily_inspection.query import (
     normalize_inspection_date,
     normalize_vehicle,
 )
+from ..daily_inspection.reader import DailyInspectionWorkOrderDetailReader
 from ..fault_notices.query import UnprocessedFaultNoticeQuery
 from .store import AutoLinkStore
 
@@ -108,12 +109,39 @@ class AutoLinkUnprocessedFaultNotices:
         source_query_factory: RunnerFactory = UnprocessedFaultNoticeQuery,
         work_order_query_factory: RunnerFactory = DailyInspectionWorkOrderQuery,
         linker_factory: RunnerFactory = DailyInspectionWorkOrderFaultNoticeLinker,
+        detail_reader_factory: RunnerFactory = DailyInspectionWorkOrderDetailReader,
     ) -> None:
         self.client = client
         self.store = store
         self.source_query = source_query_factory(client)
         self.work_order_query = work_order_query_factory(client)
         self.linker = linker_factory(client)
+        self.detail_reader = detail_reader_factory(client)
+
+    def _reconcile_link_errors(self, run_id: str) -> None:
+        for row in self.store.list_link_errors(run_id):
+            work_order = row["daily_inspection_work_order_no"]
+            fault_notice = row["fault_notice_no"]
+            if not isinstance(work_order, str) or not isinstance(fault_notice, str):
+                continue
+            try:
+                result = self.detail_reader.run(work_order)
+            except Exception:
+                continue
+            if (
+                result.get("success") is True
+                and result.get("work_order") == work_order
+                and isinstance(result.get("records"), list)
+                and result.get("count") == len(result["records"])
+                and any(
+                    isinstance(record, dict)
+                    and record.get("故障通報號") == fault_notice
+                    for record in result["records"]
+                )
+            ):
+                self.store.set_status(
+                    run_id, int(row["id"]), "linked", message="唯讀核對確認勾稽成功"
+                )
 
     def _load_source_if_needed(
         self, run_id: str, *, source_loaded: bool
@@ -248,6 +276,8 @@ class AutoLinkUnprocessedFaultNotices:
         self._load_source_if_needed(
             prepared.run_id, source_loaded=prepared.source_loaded
         )
+        if prepared.resumed:
+            self._reconcile_link_errors(prepared.run_id)
         for row in self.store.list_processable(prepared.run_id):
             self._process_row(prepared.run_id, row)
 

@@ -92,3 +92,20 @@
 - A 級且五個指定欄位依序為 true、true、false、false、false 時，將通報號與新增日期寫入等候結案庫，並從主資料表移除；`Sufficient Data for Fault Analysis` 不參與判斷。B 級或未符合者留在主資料表。
 - 兩庫搬移使用 SQLite attached database transaction，確保單筆插入與刪除一起 commit 或 rollback。明細失敗時保留已完成 snapshot 和先前成功處理的結果，錯誤摘要標示部分進度。
 - 預設模式不呼叫 AI；明確加入 `--check-analysis-readiness` 才對待處理通報逐筆啟用付費 AI。
+
+## 第四階段：條件式資料充分性檢查（2026-10-20）
+
+- 預設執行時先查每筆未列入等候結案庫的通報，保存五項非 AI 檢查值。
+- 只有首輪 `Fault Analysis Completed` 為 `false` 時，才以相同通報號再呼叫完整明細查詢的 `--check-analysis-readiness`，取得 `Sufficient Data for Fault Analysis` 的 boolean 並只回填此欄。
+- `Fault Analysis Completed` 為 `true` 時第一欄保留 `NULL`，不呼叫 AI。舊的明確 `--check-analysis-readiness` 旗標仍對每筆通報執行既有行為。
+- 第二次查詢須再次驗證通報號及六欄型別；查詢或寫入失敗即回報失敗，保留首輪已寫入的五項值。等候結案庫仍不重置，也不變更 A 級搬移條件。
+- 預設執行可能呼叫付費 OpenAI API，需 `OPENAI_API_KEY`；不呼叫 `--ai-analysis`，不修改 MMIS。
+- 若相關工單查詢失敗使 AI 證據不完整，資料充分性維持 `NULL`，不推測 true/false；跳過該筆 AI 判斷並繼續後續通報，最後以 `partial_success`、未完成清單與非零 exit code 回報。確定性的證據不完整錯誤不重試整筆完整明細。
+
+## 第五階段：同步完成後匯出 XLSX（2026-10-20）
+
+- 原指令保持既有同步與 JSON 行為、不產生 XLSX。新增 `--export-xlsx` 只在完整同步成功後，從本次已提交的 `data/unclosed_ab_fault_notices.db` 唯讀匯出 15 欄。
+- `partial_success`、查詢失敗或 SQLite 寫入失敗均不匯出。匯出失敗時保留已提交 SQLite，JSON 明確區分同步成功與匯出失敗，非零 exit code。
+- 輸出資料夾由 `.env` 的 `UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR` 設定；不存在時報錯，不自行建立 OneDrive 路徑。
+- 工作表 `AB級未處理故障通報`，微軟正黑體 12 pt；標題粗體置中，資料靠左；自動估算欄寬、長文字換行與列高。NULL 為空白，七個布林欄位依 1/0 輸出 TRUE/FALSE；所有字串以文字型別避免公式注入。
+- 台北日期檔名 `AB級未處理故障通報_程式產生MMDD.xlsx`；排他建立同名序號檔，避免覆蓋與併發競爭。離線測試使用暫存資料庫與 XLSX，不連線 Live MMIS。

@@ -7,7 +7,7 @@ import sqlite3
 import sys
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -20,13 +20,14 @@ from mmis_connector.fault_notices.query import (
     UNCLOSED_QUERY_NAME,
     UnclosedFaultNoticeQuery,
 )
+from mmis_connector.fault_notices.analysis_readiness import AnalysisEvidenceIncomplete
 
 from . import query_fault_notice_full_detail
 
 
 USAGE = (
     "python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices "
-    "[--check-analysis-readiness]"
+    "[--check-analysis-readiness] [--export-xlsx]"
 )
 DATABASE_RELATIVE_PATH = Path("data/unclosed_ab_fault_notices.db")
 DATABASE_PATH = Path(__file__).resolve().parents[2] / DATABASE_RELATIVE_PATH
@@ -109,6 +110,9 @@ class SyncState:
     detail_rolled_back: bool = False
     detail_updated: bool = False
     details_processed: int = 0
+    readiness_queries: int = 0
+    readiness_saved: int = 0
+    readiness_unresolved: list[dict[str, str]] = field(default_factory=list)
     waiting_transaction_started: bool = False
     waiting_rolled_back: bool = False
     waiting_added: int = 0
@@ -116,6 +120,8 @@ class SyncState:
     records_skipped_waiting: int = 0
     records_loaded: int = 0
     waiting_rechecked: bool = False
+    export_requested: bool = False
+    sync_completed: bool = False
 
 
 def fetch_unclosed_fault_notices() -> dict[str, Any]:
@@ -135,6 +141,8 @@ def fetch_fault_notice_detail(
             return query_fault_notice_full_detail.execute(
                 args, include_analysis_materials=check_analysis_readiness
             )
+        except AnalysisEvidenceIncomplete:
+            raise
         except Exception:
             if attempt == 2:
                 raise
@@ -376,6 +384,43 @@ def update_detail_checks(
         connection.close()
 
 
+def update_analysis_readiness(
+    notice_number: str, readiness: int, database_path: Path, state: SyncState,
+) -> None:
+    connection = sqlite3.connect(database_path)
+    transaction_started = False
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        transaction_started = True
+        state.detail_transaction_started = True
+        _check_schema(connection)
+        cursor = connection.execute(
+            f'UPDATE {TABLE_NAME} SET "Sufficient Data for Fault Analysis" = ? '
+            'WHERE "通報號" = ? AND "Fault Analysis Completed" = 0',
+            (readiness, notice_number),
+        )
+        if cursor.rowcount != 1:
+            raise MMISClientError("資料充分性未更新唯一且故障分析未完成的通報")
+        stored = connection.execute(
+            f'SELECT "Sufficient Data for Fault Analysis" FROM {TABLE_NAME} '
+            'WHERE "通報號" = ?', (notice_number,),
+        ).fetchone()
+        if stored != (readiness,):
+            raise MMISClientError("資料充分性寫入驗證失敗")
+        connection.commit()
+        state.readiness_saved += 1
+    except Exception:
+        if transaction_started:
+            try:
+                connection.rollback()
+                state.detail_rolled_back = True
+            except sqlite3.Error:
+                pass
+        raise
+    finally:
+        connection.close()
+
+
 def move_to_waiting(
     notice_number: str,
     checks: tuple[int | None, ...],
@@ -440,10 +485,14 @@ def execute(
     waiting_database_path: Path | None = None,
     state: SyncState | None = None,
 ) -> dict[str, Any]:
-    if list(args) not in ([], ["--check-analysis-readiness"]):
+    if len(args) != len(set(args)) or set(args) - {
+        "--check-analysis-readiness", "--export-xlsx"
+    }:
         raise MMISClientError(f"用法: {USAGE}")
-    check_analysis_readiness = bool(args)
+    check_analysis_readiness = "--check-analysis-readiness" in args
+    export_requested = "--export-xlsx" in args
     state = state if state is not None else SyncState()
+    state.export_requested = export_requested
     all_rows = prepare_rows(fetch_unclosed_fault_notices())
     state.records_fetched = len(all_rows)
     path = database_path or DATABASE_PATH
@@ -464,6 +513,8 @@ def execute(
     state.snapshot_saved = True
     for row in rows:
         notice_number = row[number_index]
+        if check_analysis_readiness:
+            state.readiness_queries += 1
         detail = fetch_fault_notice_detail(
             notice_number, check_analysis_readiness=check_analysis_readiness
         )
@@ -472,11 +523,30 @@ def execute(
         )
         update_detail_checks(notice_number, checks, path, state)
         state.details_processed += 1
+        if not check_analysis_readiness and checks[1] == 0:
+            state.readiness_queries += 1
+            try:
+                readiness_detail = fetch_fault_notice_detail(
+                    notice_number, check_analysis_readiness=True
+                )
+            except AnalysisEvidenceIncomplete as exc:
+                state.readiness_unresolved.append({
+                    "notice_number": notice_number, "reason": str(exc),
+                })
+                continue
+            readiness_checks = prepare_detail_checks(
+                readiness_detail, notice_number, require_readiness=True
+            )
+            update_analysis_readiness(
+                notice_number, readiness_checks[0], path, state
+            )
+        elif check_analysis_readiness:
+            state.readiness_saved += 1
         if is_awaiting_closure(row[BASIC_FIELDS.index("事故等級")], checks):
             move_to_waiting(notice_number, checks, path, waiting_path, state)
-    return {
-        "success": True,
-        "status": "success",
+    result = {
+        "success": not state.readiness_unresolved,
+        "status": "partial_success" if state.readiness_unresolved else "success",
         "database": str(DATABASE_RELATIVE_PATH).replace("\\", "/"),
         "table": TABLE_NAME,
         "records_fetched": len(all_rows),
@@ -486,15 +556,39 @@ def execute(
         "records_saved": saved - state.waiting_added,
         "sync_mode": "full_replace",
         "detail_records_processed": state.details_processed,
-        "detail_checks_saved": (6 if check_analysis_readiness else 5)
-        * (state.details_processed - state.waiting_added),
+        "detail_checks_saved": 5 * (state.details_processed - state.waiting_added)
+        + state.readiness_saved - (state.waiting_added if check_analysis_readiness else 0),
+        "analysis_readiness_queries": state.readiness_queries,
+        "analysis_readiness_saved": state.readiness_saved,
+        "analysis_readiness_unresolved": state.readiness_unresolved,
         "awaiting_closure_database": str(WAITING_DATABASE_RELATIVE_PATH).replace("\\", "/"),
         "awaiting_closure_added": state.waiting_added,
         "awaiting_closure_total": len(waiting_numbers) + state.waiting_added,
         "analysis_readiness": (
-            "completed" if rows and check_analysis_readiness else "not_run"
+            "partial" if state.readiness_unresolved else
+            "completed" if state.readiness_queries else "not_run"
         ),
     }
+    if export_requested:
+        result["operation"] = "sync_and_export_xlsx"
+        if not result["success"]:
+            result["xlsx_export"] = {
+                "status": "skipped", "reason": "SQLite 同步尚有未完成的資料充分性檢查",
+            }
+            return result
+        state.sync_completed = True
+        try:
+            from ._unclosed_ab_xlsx import export_xlsx
+        except ModuleNotFoundError as exc:
+            if exc.name == "openpyxl":
+                raise MMISClientError("未安裝 openpyxl，無法匯出 XLSX") from exc
+            raise
+        result["xlsx_export"] = export_xlsx(
+            path, TABLE_NAME, tuple(column[0] for column in COLUMNS),
+            frozenset({"ATP故障", *DETAIL_CHECK_FIELDS}),
+            expected_records=result["records_saved"],
+        )
+    return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -520,6 +614,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "detail_rolled_back": state.detail_rolled_back,
             "detail_updated": state.detail_updated,
             "detail_records_processed": state.details_processed,
+            "analysis_readiness_queries": state.readiness_queries,
+            "analysis_readiness_saved": state.readiness_saved,
+            "analysis_readiness_unresolved": state.readiness_unresolved,
             "waiting_transaction_started": state.waiting_transaction_started,
             "waiting_rolled_back": state.waiting_rolled_back,
             "awaiting_closure_added": state.waiting_added,
@@ -528,10 +625,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             "waiting_rechecked": state.waiting_rechecked,
             "records_loaded": state.records_loaded,
         }
+        if state.export_requested:
+            result["operation"] = "sync_and_export_xlsx"
+            result["sqlite_sync_success"] = state.sync_completed
+            if state.sync_completed:
+                result["database"] = str(DATABASE_RELATIVE_PATH).replace("\\", "/")
+                result["table"] = TABLE_NAME
+                result["records_saved"] = state.records_loaded - state.waiting_added
+            result["xlsx_export"] = {
+                "status": "failed" if state.sync_completed else "not_run",
+                "reason": message if state.sync_completed else "SQLite 同步失敗",
+            }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
+    return 0 if result["success"] else 1
 
 
 if __name__ == "__main__":

@@ -172,7 +172,7 @@ def test_prompt_path_is_independent_of_working_directory(monkeypatch, tmp_path):
 
 def test_failed_work_order_query_is_not_false(notice):
     notice["故障分析素材"]["日檢工單"].append({"工作單": "115-1A-1", "查詢狀態": "失敗"})
-    with pytest.raises(MMISClientError, match="無法安全判斷"):
+    with pytest.raises(readiness.AnalysisEvidenceIncomplete, match="無法安全判斷"):
         readiness.build_evidence(notice)
 
 

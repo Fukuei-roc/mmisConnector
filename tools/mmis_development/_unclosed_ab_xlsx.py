@@ -1,0 +1,182 @@
+"""Export the committed unclosed A/B notice snapshot as one XLSX worksheet."""
+
+from __future__ import annotations
+
+import math
+import os
+import sqlite3
+import unicodedata
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from dotenv import load_dotenv
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
+
+from mmis_connector.auth import MMISClientError
+
+
+ROOT = Path(__file__).resolve().parents[2]
+ENV_NAME = "UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR"
+SHEET_NAME = "AB級未處理故障通報"
+FILE_PREFIX = "AB級未處理故障通報_程式產生"
+FONT_NAME = "微軟正黑體"
+FONT_SIZE = 12
+LONG_TEXT_COLUMNS = {"故障現象", "備註"}
+
+
+class XlsxExportError(MMISClientError):
+    """The SQLite sync committed, but XLSX export did not finish."""
+
+
+def configured_output_directory() -> Path:
+    load_dotenv(ROOT / ".env", override=False)
+    value = os.getenv(ENV_NAME, "").strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    if not value:
+        raise XlsxExportError(f"未設定 {ENV_NAME}；請在專案 .env 設定 XLSX 輸出資料夾")
+    directory = Path(value).expanduser()
+    if not directory.is_absolute():
+        raise XlsxExportError(f"{ENV_NAME} 必須是絕對路徑")
+    if not directory.is_dir():
+        raise XlsxExportError(f"{ENV_NAME} 指定的資料夾不存在")
+    return directory
+
+
+def read_snapshot(
+    database_path: Path, table_name: str, expected_columns: tuple[str, ...],
+) -> list[tuple[Any, ...]]:
+    try:
+        connection = sqlite3.connect(database_path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            actual = tuple(row[1] for row in connection.execute(f"PRAGMA table_info({table_name})"))
+            if actual != expected_columns:
+                raise XlsxExportError("本次 SQLite 資料表欄位與 XLSX 匯出規格不符")
+            quoted = ", ".join(f'"{name}"' for name in expected_columns)
+            return connection.execute(
+                f"SELECT {quoted} FROM {table_name} ORDER BY rowid"
+            ).fetchall()
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        raise XlsxExportError(f"無法讀取本次同步的 SQLite: {type(exc).__name__}") from exc
+
+
+def _display_width(value: object) -> int:
+    text = "TRUE" if value is True else "FALSE" if value is False else str(value) if value is not None else ""
+    return max((sum(
+        0 if unicodedata.combining(char) else
+        2 if unicodedata.east_asian_width(char) in "FW" else 1
+        for char in line
+    ) for line in text.splitlines()), default=0)
+
+
+def _line_count(value: object, usable_width: int) -> int:
+    if value is None:
+        return 1
+    return sum(
+        max(1, math.ceil(_display_width(line) / usable_width))
+        for line in str(value).split("\n")
+    )
+
+
+def build_workbook(
+    rows: list[tuple[Any, ...]], columns: tuple[str, ...],
+    boolean_columns: frozenset[str],
+) -> Workbook:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = SHEET_NAME
+    sheet.append(columns)
+    widths = [min(65 if name in LONG_TEXT_COLUMNS else 60,
+                  max(10, _display_width(name) + 3)) for name in columns]
+    header_font = Font(name=FONT_NAME, size=FONT_SIZE, bold=True)
+    data_font = Font(name=FONT_NAME, size=FONT_SIZE, bold=False)
+    for cell in sheet[1]:
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    sheet.row_dimensions[1].height = 24
+
+    for row_number, row in enumerate(rows, start=2):
+        if len(row) != len(columns):
+            raise XlsxExportError("SQLite 資料列欄位數與 XLSX 匯出規格不符")
+        sheet.append([None] * len(columns))
+        for index, (name, value) in enumerate(zip(columns, row, strict=True), start=1):
+            if name in boolean_columns and value is not None:
+                if type(value) is not int or value not in (0, 1):
+                    raise XlsxExportError(f"SQLite 布林欄位 {name} 含有無效值")
+                value = bool(value)
+            cell = sheet.cell(row_number, index, value)
+            if isinstance(value, str):
+                cell.data_type = "s"  # Preserve =, +, -, @ as literal text.
+                cell.number_format = "@"
+            cell.font = data_font
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+            if value is not None:
+                widths[index - 1] = min(
+                    65 if name in LONG_TEXT_COLUMNS else 60,
+                    max(widths[index - 1], _display_width(value) + 3),
+                )
+
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    for row_number in range(2, sheet.max_row + 1):
+        height_lines = 1
+        for index, name in enumerate(columns, start=1):
+            cell = sheet.cell(row_number, index)
+            usable = max(1, math.floor(widths[index - 1] - 3))
+            lines = _line_count(cell.value, usable)
+            if name in LONG_TEXT_COLUMNS or lines > 1:
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            height_lines = max(height_lines, lines)
+        sheet.row_dimensions[row_number].height = min(409.5, 18 * height_lines + 6)
+    return workbook
+
+
+def export_xlsx(
+    database_path: Path, table_name: str, columns: tuple[str, ...],
+    boolean_columns: frozenset[str], *, output_directory: Path | None = None,
+    now: datetime | None = None, expected_records: int | None = None,
+) -> dict[str, Any]:
+    directory = output_directory if output_directory is not None else configured_output_directory()
+    if not directory.is_dir():
+        raise XlsxExportError("XLSX 輸出資料夾不存在")
+    rows = read_snapshot(database_path, table_name, columns)
+    if expected_records is not None and len(rows) != expected_records:
+        raise XlsxExportError("本次 SQLite 筆數與 XLSX 匯出筆數不符")
+    workbook = build_workbook(rows, columns, boolean_columns)
+    date = (now or datetime.now(ZoneInfo("Asia/Taipei"))).astimezone(
+        ZoneInfo("Asia/Taipei")
+    ).strftime("%m%d")
+    base = f"{FILE_PREFIX}{date}"
+    output_file: Path | None = None
+    export_done = False
+    try:
+        suffix = 1
+        while True:
+            filename = f"{base}{'_' + str(suffix) if suffix > 1 else ''}.xlsx"
+            candidate = directory / filename
+            try:
+                handle = candidate.open("xb")
+            except FileExistsError:
+                suffix += 1
+                continue
+            output_file = candidate
+            break
+        with handle:
+            workbook.save(handle)
+        export_done = True
+        return {
+            "status": "success", "records_exported": len(rows),
+            "columns_exported": len(columns), "output_file": str(output_file),
+        }
+    except OSError as exc:
+        raise XlsxExportError(f"XLSX 寫入失敗: {type(exc).__name__}") from exc
+    finally:
+        workbook.close()
+        if output_file is not None and not export_done:
+            output_file.unlink(missing_ok=True)

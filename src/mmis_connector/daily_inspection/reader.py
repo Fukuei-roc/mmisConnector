@@ -47,6 +47,20 @@ def normalize_work_order(value: str) -> str:
     return work_order
 
 
+def confirm_detail_work_order(response: str, expected_work_order: str) -> None:
+    _, soup = _parse_maximo_markup(response)
+    values = []
+    for label in soup.find_all("label", attrs={"for": True}):
+        if label.get_text(" ", strip=True).rstrip(":：").strip() != "工作單":
+            continue
+        control = soup.find("input", id=str(label["for"]))
+        if control is None:
+            raise MMISClientError("日檢工單明細缺少工作單輸入框")
+        values.append(str(control.get("value", "")).strip())
+    if not values or set(values) != {expected_work_order}:
+        raise MMISClientError("日檢工單明細工作單與輸入不相符")
+
+
 def parse_daily_inspection_basic_info(
     response: str, *, expected_work_order: str
 ) -> dict[str, str]:
@@ -194,6 +208,7 @@ class DailyInspectionWorkOrderDetailReader:
             value="",
             xhr_seq=5,
         )
+        confirm_detail_work_order(detail_response, normalized_work_order)
         return normalized_work_order, detail_response
 
     def run(self, work_order: str) -> dict[str, Any]:

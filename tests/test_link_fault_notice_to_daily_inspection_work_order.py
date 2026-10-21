@@ -256,6 +256,8 @@ def test_run_rejects_unconfirmed_link_result(
         (
             _detail_controls(),
             _detail_controls() + _fault_table("1150923-99"),
+            _detail_controls() + _fault_table("1150923-99"),
+            _detail_controls() + _fault_table("1150923-99"),
         )
     )
     monkeypatch.setattr(
@@ -273,6 +275,54 @@ def test_run_rejects_unconfirmed_link_result(
         linker.run("115-1A-71002", "1150923-36")
 
 
+def test_confirmation_read_recovers_without_replaying_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    linker = _linker(monkeypatch)
+    reads = 0
+    writes = 0
+
+    def open_detail(work_order: str) -> tuple[str, str]:
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            raise MMISClientError("MMIS 網路請求失敗: ReadTimeout")
+        return work_order.strip(), _detail_controls() + _fault_table("1150923-36")
+
+    def post_events(**kwargs: Any) -> str:
+        nonlocal writes
+        writes += 1
+        return "<server_response/>"
+
+    monkeypatch.setattr(linker.detail_reader, "open_detail", open_detail)
+    monkeypatch.setattr(linker.events, "post_events", post_events)
+    monkeypatch.setattr(linker.events, "post", lambda **kwargs: _daily_list())
+
+    assert linker.run("115-1A-71002", "1150923-36")["linked"] is True
+    assert reads == 3
+    assert writes == 1
+
+
+def test_confirmation_retries_missing_notice_without_replaying_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    linker = _linker(monkeypatch)
+    responses = iter((
+        _detail_controls(),
+        _detail_controls() + _fault_table("1150923-99"),
+        _detail_controls() + _fault_table("1150923-36"),
+    ))
+    writes = []
+    monkeypatch.setattr(
+        linker.detail_reader, "open_detail", lambda work_order: (work_order, next(responses))
+    )
+    monkeypatch.setattr(linker.events, "post_events", lambda **kwargs: writes.append(kwargs) or "")
+    monkeypatch.setattr(linker.events, "post", lambda **kwargs: _daily_list())
+
+    assert linker.run("115-1A-71002", "1150923-36")["linked"] is True
+    assert len(writes) == 1
+
+
 def test_run_rejects_reopened_wrong_work_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -284,7 +334,7 @@ def test_run_rejects_reopened_wrong_work_order(
         lambda work_order: (next(reads), _detail_controls() + _fault_table("1150923-36")),
     )
     monkeypatch.setattr(linker.events, "post_events", lambda **kwargs: "")
-    with pytest.raises(MMISClientError, match="無法確認"):
+    with pytest.raises(MMISClientError, match="工作單不相符"):
         linker.run("115-1A-71002", "1150923-36")
 
 

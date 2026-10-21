@@ -308,6 +308,92 @@ def test_link_error_is_recorded_and_never_retried(tmp_path) -> None:
         assert len(source.calls) == 1
 
 
+def test_resume_reconciles_confirmed_link_without_replaying_write(tmp_path) -> None:
+    database = tmp_path / "state.sqlite3"
+    source = FakeRunner(lambda: _source_result([_source("1150923-01")]))
+    work_orders = FakeRunner(
+        lambda *_: {
+            "success": True,
+            "count": 1,
+            "records": [_order("115-1A-1", "2026/09/24")],
+        }
+    )
+    linker = FakeRunner(
+        lambda *_: (_ for _ in ()).throw(MMISClientError("勾稽後無法確認指定故障通報"))
+    )
+    detail = FakeRunner(
+        lambda work_order: {
+            "success": True,
+            "work_order": work_order,
+            "count": 1,
+            "records": [{"故障通報號": "1150923-01"}],
+        }
+    )
+
+    def workflow(store):
+        return AutoLinkUnprocessedFaultNotices(
+            object(), store,
+            source_query_factory=lambda _: source,
+            work_order_query_factory=lambda _: work_orders,
+            linker_factory=lambda _: linker,
+            detail_reader_factory=lambda _: detail,
+        )
+
+    with AutoLinkStore(database) as store:
+        first = workflow(store).run()
+        assert first["link_error"] == 1
+
+    with AutoLinkStore(database) as store:
+        second = workflow(store).run()
+        row = store.connection.execute(
+            "SELECT processing_status, attempt_count FROM fault_notices WHERE run_id = ?",
+            (second["run_id"],),
+        ).fetchone()
+        assert second["resumed"] is True
+        assert second["linked"] == 1
+        assert second["link_error"] == 0
+        assert second["completed"] is True
+        assert row["processing_status"] == "linked"
+        assert row["attempt_count"] == 1
+        assert linker.calls == [("115-1A-1", "1150923-01")]
+        assert detail.calls == [("115-1A-1",)]
+
+
+def test_resume_keeps_link_error_when_read_does_not_confirm(tmp_path) -> None:
+    database = tmp_path / "state.sqlite3"
+    source = FakeRunner(lambda: _source_result([_source("1150923-01")]))
+    work_orders = FakeRunner(
+        lambda *_: {"success": True, "count": 1,
+                     "records": [_order("115-1A-1", "2026/09/24")]}
+    )
+    linker = FakeRunner(
+        lambda *_: (_ for _ in ()).throw(MMISClientError("勾稽結果不明"))
+    )
+    detail = FakeRunner(
+        lambda work_order: {"success": True, "work_order": work_order,
+                            "count": 1, "records": [{"故障通報號": "1150923-99"}]}
+    )
+
+    with AutoLinkStore(database) as store:
+        AutoLinkUnprocessedFaultNotices(
+            object(), store, source_query_factory=lambda _: source,
+            work_order_query_factory=lambda _: work_orders,
+            linker_factory=lambda _: linker,
+            detail_reader_factory=lambda _: detail,
+        ).run()
+    with AutoLinkStore(database) as store:
+        result = AutoLinkUnprocessedFaultNotices(
+            object(), store, source_query_factory=lambda _: source,
+            work_order_query_factory=lambda _: work_orders,
+            linker_factory=lambda _: linker,
+            detail_reader_factory=lambda _: detail,
+        ).run()
+        assert result["link_error"] == 1
+        assert result["completed"] is False
+        assert len(linker.calls) == 1
+        assert detail.calls == [("115-1A-1",)]
+
+
 def test_unexpected_link_exception_is_redacted(tmp_path) -> None:
     source = FakeRunner(lambda: _source_result([_source("1150923-01")]))
     work_orders = FakeRunner(

@@ -270,6 +270,18 @@ class AutoLinkStore:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_link_errors(self, run_id: str) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT id, fault_notice_no, daily_inspection_work_order_no
+            FROM fault_notices
+            WHERE run_id = ? AND processing_status = 'link_error'
+            ORDER BY source_index
+            """,
+            (run_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def begin_attempt(self, run_id: str, row_id: int) -> None:
         with self.connection:
             cursor = self.connection.execute(

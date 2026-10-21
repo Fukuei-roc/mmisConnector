@@ -1,0 +1,31 @@
+{
+  "id": "MMIS-049",
+  "title": "完成同步後匯出 XLSX",
+  "stage": "done",
+  "risk": "high",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-10-20",
+  "epic": "自動處理 A-B 級未結案故障通報",
+  "userStory": "完成同步後匯出 XLSX",
+  "dependsOn": ["MMIS-048"],
+  "order": 49,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {
+    "featureSpec": "ai/artifacts/自動處理 A-B 級未結案故障通報/feature-spec.md",
+    "screenSpec": "",
+    "mockupDecision": "",
+    "taskCard": "ai/artifacts/自動處理 A-B 級未結案故障通報/task-cards/MMIS-049.md",
+    "verificationReport": "ai/artifacts/自動處理 A-B 級未結案故障通報/verification/MMIS-049.md",
+    "pr": ""
+  },
+  "refs": ["tools/mmis_development/auto_process_unclosed_ab_fault_notices.py", "tools/mmis_development/_unclosed_ab_xlsx.py", "tests/test_unclosed_ab_xlsx.py", "tools/mmis_development/README.md", "pyproject.toml", ".env.example"],
+  "evidence": {
+    "commands": ["python -m pytest tests/test_unclosed_ab_xlsx.py tests/test_auto_process_unclosed_ab_fault_notices.py", "python -m pytest", "python -m compileall -q src tests", "python -m compileall -q tools/mmis_development", "python -m pip check", "git diff --check"],
+    "findings": ["79 focused tests passed", "431 passed, 39 skipped", "先同步後匯出、15 欄與格式、安全文字、排他流水號、失敗保留 SQLite 均由離線測試驗證"],
+    "residual": "未執行 Live MMIS 或正式 OneDrive 匯出；Excel 列高受 XLSX 409.5 pt 上限限制。"
+  },
+  "comments": [{"name": "專案使用者", "time": "2026-10-20", "text": "明確要求 --export-xlsx 只在本次完整同步成功後匯出，包含格式、路徑、命名與安全驗證。"}]
+}

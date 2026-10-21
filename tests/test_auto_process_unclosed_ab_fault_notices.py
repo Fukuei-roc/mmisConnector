@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from mmis_connector.auth import MMISClientError
+from mmis_connector.fault_notices.analysis_readiness import AnalysisEvidenceIncomplete
 from mmis_connector.fault_notices.query import (
     UNCLOSED_DEPOT_NAME, UNCLOSED_INCIDENT_LEVELS, UNCLOSED_QUERY_NAME,
 )
@@ -328,6 +329,19 @@ def test_detail_query_stops_after_third_failure(monkeypatch) -> None:
     assert slept == [1]
 
 
+def test_incomplete_analysis_evidence_does_not_repeat_full_detail(monkeypatch) -> None:
+    calls = []
+
+    def fail(args, **kwargs):
+        calls.append(args[0])
+        raise AnalysisEvidenceIncomplete("相關工單查詢失敗")
+
+    monkeypatch.setattr(tool.query_fault_notice_full_detail, "execute", fail)
+    with pytest.raises(AnalysisEvidenceIncomplete):
+        tool.fetch_fault_notice_detail("1150910-14", check_analysis_readiness=True)
+    assert calls == ["1150910-14"]
+
+
 @pytest.mark.parametrize("readiness", [None, True, False])
 def test_prepare_detail_checks_types(readiness) -> None:
     values = tool.prepare_detail_checks(
@@ -428,9 +442,144 @@ def test_explicit_readiness_flag_updates_all_six(monkeypatch, tmp_path) -> None:
     assert calls == [True]
     assert summary["detail_checks_saved"] == 6
     assert summary["analysis_readiness"] == "completed"
+    assert summary["analysis_readiness_queries"] == 1
+    assert summary["analysis_readiness_saved"] == 1
     assert tuple(read_rows(path)[0][field] for field in tool.DETAIL_CHECK_FIELDS) == (
         0, 1, 0, 0, 1, 0,
     )
+
+
+@pytest.mark.parametrize("readiness", [True, False])
+def test_default_queries_readiness_only_for_incomplete_analysis(
+    monkeypatch, tmp_path, readiness,
+) -> None:
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("incomplete"), notice("complete")))
+    calls = []
+
+    def detail(number, *, check_analysis_readiness):
+        calls.append((number, check_analysis_readiness))
+        result = detail_result(number, readiness if check_analysis_readiness else None)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = number == "complete"
+        return result
+
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    summary = tool.execute([], database_path=path)
+    assert calls == [
+        ("incomplete", False), ("incomplete", True), ("complete", False),
+    ]
+    rows = {r["通報號"]: r for r in read_rows(path)}
+    assert rows["incomplete"]["Sufficient Data for Fault Analysis"] == int(readiness)
+    assert rows["incomplete"]["Fault Analysis Completed"] == 0
+    assert rows["incomplete"]["CA Repair Work Orders Not Closed"] == 1
+    assert rows["complete"]["Sufficient Data for Fault Analysis"] is None
+    assert summary["analysis_readiness_queries"] == 1
+    assert summary["analysis_readiness_saved"] == 1
+    assert summary["analysis_readiness"] == "completed"
+    assert summary["detail_checks_saved"] == 11
+
+
+def test_readiness_failure_preserves_first_query_checks(monkeypatch, tmp_path, capsys) -> None:
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "DATABASE_PATH", path)
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("incomplete")))
+
+    def detail(number, *, check_analysis_readiness):
+        if check_analysis_readiness:
+            raise MMISClientError("資料充分性查詢失敗")
+        result = detail_result(number)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = False
+        return result
+
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    assert tool.main([]) == 1
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["analysis_readiness_queries"] == 1
+    assert summary["analysis_readiness_saved"] == 0
+    row = read_rows(path)[0]
+    assert row["Fault Analysis Completed"] == 0
+    assert row["Sufficient Data for Fault Analysis"] is None
+
+
+def test_incomplete_work_order_evidence_continues_remaining_notices(
+    monkeypatch, tmp_path, capsys,
+) -> None:
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "DATABASE_PATH", path)
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("blocked"), notice("next")))
+    calls = []
+
+    def detail(number, *, check_analysis_readiness):
+        calls.append((number, check_analysis_readiness))
+        if number == "blocked" and check_analysis_readiness:
+            raise AnalysisEvidenceIncomplete("臨時檢修工單 115-C2-33584 查詢失敗，無法安全判斷資料充分性")
+        result = detail_result(number, True if check_analysis_readiness else None)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = False
+        return result
+
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    assert tool.main([]) == 1
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["status"] == "partial_success"
+    assert summary["success"] is False
+    assert summary["analysis_readiness"] == "partial"
+    assert summary["detail_records_processed"] == 2
+    assert summary["analysis_readiness_queries"] == 2
+    assert summary["analysis_readiness_saved"] == 1
+    assert summary["analysis_readiness_unresolved"][0]["notice_number"] == "blocked"
+    assert calls == [("blocked", False), ("blocked", True), ("next", False), ("next", True)]
+    rows = {row["通報號"]: row for row in read_rows(path)}
+    assert rows["blocked"]["Sufficient Data for Fault Analysis"] is None
+    assert rows["blocked"]["Fault Analysis Completed"] == 0
+    assert rows["next"]["Sufficient Data for Fault Analysis"] == 1
+
+
+def test_readiness_result_must_match_notice_and_be_boolean(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("incomplete")))
+
+    def detail(number, *, check_analysis_readiness):
+        result = detail_result("other" if check_analysis_readiness else number)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = False
+        return result
+
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    with pytest.raises(MMISClientError, match="通報號不符"):
+        tool.execute([], database_path=path)
+    row = read_rows(path)[0]
+    assert row["Fault Analysis Completed"] == 0
+    assert row["Sufficient Data for Fault Analysis"] is None
+
+
+def test_readiness_sql_failure_rolls_back_only_readiness(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "notice.db"
+    tool.replace_rows(tool.prepare_rows(query_result(notice("incomplete"))), path, tool.SyncState())
+    with sqlite3.connect(path) as connection:
+        connection.execute('''
+            CREATE TRIGGER fail_readiness BEFORE UPDATE ON unclosed_ab_fault_notices
+            WHEN NEW."Sufficient Data for Fault Analysis" IS NOT NULL
+            BEGIN SELECT RAISE(ABORT, 'readiness blocked'); END
+        ''')
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices",
+                        lambda: query_result(notice("incomplete")))
+
+    def detail(number, *, check_analysis_readiness):
+        result = detail_result(number, True if check_analysis_readiness else None)
+        result["結案狀態檢查"]["Fault Analysis Completed"] = False
+        return result
+
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
+    state = tool.SyncState()
+    with pytest.raises(sqlite3.Error, match="readiness blocked"):
+        tool.execute([], database_path=path, state=state)
+    assert state.detail_rolled_back is True
+    row = read_rows(path)[0]
+    assert row["Fault Analysis Completed"] == 0
+    assert row["Sufficient Data for Fault Analysis"] is None
 
 
 def test_empty_snapshot_skips_detail_query(monkeypatch, tmp_path) -> None:

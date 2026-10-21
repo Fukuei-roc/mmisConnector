@@ -74,6 +74,8 @@
 - WHEN 勾稽成功且既有領域驗證通過，THE SYSTEM SHALL 將該列標記為 `linked`。
 - WHEN 查詢發生可安全重試的錯誤，THE SYSTEM SHALL 記錄 `query_failed` 並繼續下一列；下次續跑可再嘗試該列。
 - WHEN 勾稽發生任何錯誤（包含寫入前失敗、結果不明或驗證失敗），THE SYSTEM SHALL 記錄 `link_error` 與非敏感錯誤摘要，且本次及後續續跑都不得自動重送該列。
+- WHEN 勾稽寫入已送出但後續唯讀確認查詢失敗或暫時找不到通報，THE SYSTEM SHALL 有限重試唯讀確認，不得重送寫入 POST。
+- WHEN 未完成批次續跑且存在 `link_error`，THE SYSTEM SHALL 以已記錄的工單號與通報號唯讀核對現有關聯；只有精確相符時才能改記 `linked`，否則保留原狀及人工審查需求。
 - WHEN 任一列狀態改變，THE SYSTEM SHALL 使用獨立 SQLite transaction 立即提交該列的工作單號、狀態、結果訊息、嘗試次數及時間戳。
 - WHEN 所有列都到達終止狀態且沒有 `link_error`，THE SYSTEM SHALL 將批次標記為完成；若存在 `link_error`，批次維持未完成以保留資料並阻止新批次自動重送相同通報。
 - WHEN 另一個同資料庫的批次程序正在執行，THE SYSTEM SHALL 在任何 MMIS 操作前安全失敗，不得並行處理相同資料列。

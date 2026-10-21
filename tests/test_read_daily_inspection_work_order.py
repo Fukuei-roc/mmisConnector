@@ -102,6 +102,8 @@ def _fault_table(*, include_row: bool = True, total: int = 1) -> str:
         else ""
     )
     return (
+        '<label for="detail-work-order">工作單:</label>'
+        '<input id="detail-work-order" value="115-1A-70048">'
         f'<section>{count}{next_control}<table summary="{FAULT_TABLE_SUMMARY}">'
         f"{header_html}{row_html}</table></section>"
     )
@@ -194,9 +196,23 @@ def test_run_rejects_non_exact_work_order(monkeypatch: pytest.MonkeyPatch) -> No
         _run(monkeypatch, work_orders=["115-1A-99999"])
 
 
+def test_run_rejects_wrong_detail_after_exact_list_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wrong_detail = _fault_table().replace('value="115-1A-70048"', 'value="115-1A-99999"')
+    with pytest.raises(MMISClientError, match="明細工作單與輸入不相符"):
+        _run(monkeypatch, detail_response=wrong_detail)
+
+
 def test_run_rejects_missing_fault_table(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(MMISClientError, match="故障通報管理"):
-        _run(monkeypatch, detail_response="<div>工單明細但缺少目標表格</div>")
+        _run(
+            monkeypatch,
+            detail_response=(
+                '<label for="detail-work-order">工作單:</label>'
+                '<input id="detail-work-order" value="115-1A-70048">'
+            ),
+        )
 
 
 def test_run_rejects_incomplete_fault_notice_page(
