@@ -103,6 +103,20 @@ snapshot、先前成功搬移的通報及該筆已保存的五項非 AI 檢查�
 若同步失敗或資料充分性仍有未完成項目，不會產生 XLSX。匯出失敗不回滾已成功同步的
 SQLite，JSON 會區分同步與匯出結果並使用非零 exit code。
 
+要從目前的 SQLite 資料直接產生相同格式的 Excel，從專案根目錄執行：
+
+```powershell
+python -m tools.mmis_development.export_unclosed_ab_fault_notices_from_db
+```
+
+此測試指令只讀取 `data/unclosed_ab_fault_notices.db`，不重新查詢 MMIS，也不重建資料庫。
+它沿用 `--export-xlsx` 的輸出資料夾設定和檔名規則。Excel 只輸出八個基本欄位與
+`備註`，省略六個英文結案狀態檢查欄位。所有列高固定為 15.5 pt，儲存格垂直靠上；
+欄寬依序為 6.5、11.8、14.5、10.6、10.6、70、10.6、14.9、40。
+資料依「事故等級」、「發生日期」、「車組/車號」逐級遞增排序；相同排序鍵保留
+資料庫原順序。儲存格不依結案狀態填滿顏色，備註保留 SQLite 原值；不回寫 SQLite。
+原同步指令的 Excel 格式不受影響。
+
 請在專案 `.env` 設定 `UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR` 為既有的絕對輸出資料夾。
 Excel 只有 `AB級未處理故障通報` 一張工作表，依資料表順序匯出全部 15 欄；SQLite
 `NULL` 為空白，布林 `1`／`0` 為 Excel `TRUE`／`FALSE`。所有儲存格使用微軟正黑體

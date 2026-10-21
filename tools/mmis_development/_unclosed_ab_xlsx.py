@@ -6,6 +6,7 @@ import math
 import os
 import sqlite3
 import unicodedata
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -87,6 +88,8 @@ def _line_count(value: object, usable_width: int) -> int:
 def build_workbook(
     rows: list[tuple[Any, ...]], columns: tuple[str, ...],
     boolean_columns: frozenset[str],
+    *, row_height: float | None = None, vertical_alignment: str = "center",
+    column_widths: Mapping[str, float] | None = None,
 ) -> Workbook:
     workbook = Workbook()
     sheet = workbook.active
@@ -98,8 +101,8 @@ def build_workbook(
     data_font = Font(name=FONT_NAME, size=FONT_SIZE, bold=False)
     for cell in sheet[1]:
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-    sheet.row_dimensions[1].height = 24
+        cell.alignment = Alignment(horizontal="center", vertical=vertical_alignment)
+    sheet.row_dimensions[1].height = row_height if row_height is not None else 24
 
     for row_number, row in enumerate(rows, start=2):
         if len(row) != len(columns):
@@ -115,25 +118,31 @@ def build_workbook(
                 cell.data_type = "s"  # Preserve =, +, -, @ as literal text.
                 cell.number_format = "@"
             cell.font = data_font
-            cell.alignment = Alignment(horizontal="left", vertical="center")
+            cell.alignment = Alignment(horizontal="left", vertical=vertical_alignment)
             if value is not None:
                 widths[index - 1] = min(
                     65 if name in LONG_TEXT_COLUMNS else 60,
                     max(widths[index - 1], _display_width(value) + 3),
                 )
 
-    for index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[get_column_letter(index)].width = width
+    for index, (name, width) in enumerate(zip(columns, widths, strict=True), start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = (
+            column_widths[name] if column_widths is not None and name in column_widths else width
+        )
     for row_number in range(2, sheet.max_row + 1):
         height_lines = 1
         for index, name in enumerate(columns, start=1):
             cell = sheet.cell(row_number, index)
-            usable = max(1, math.floor(widths[index - 1] - 3))
+            usable = max(1, math.floor(sheet.column_dimensions[get_column_letter(index)].width - 3))
             lines = _line_count(cell.value, usable)
             if name in LONG_TEXT_COLUMNS or lines > 1:
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                cell.alignment = Alignment(
+                    horizontal="left", vertical=vertical_alignment, wrap_text=True
+                )
             height_lines = max(height_lines, lines)
-        sheet.row_dimensions[row_number].height = min(409.5, 18 * height_lines + 6)
+        sheet.row_dimensions[row_number].height = (
+            row_height if row_height is not None else min(409.5, 18 * height_lines + 6)
+        )
     return workbook
 
 
@@ -141,6 +150,10 @@ def export_xlsx(
     database_path: Path, table_name: str, columns: tuple[str, ...],
     boolean_columns: frozenset[str], *, output_directory: Path | None = None,
     now: datetime | None = None, expected_records: int | None = None,
+    excluded_columns: frozenset[str] = frozenset(),
+    row_height: float | None = None, vertical_alignment: str = "center",
+    column_widths: Mapping[str, float] | None = None,
+    sort_columns: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     directory = output_directory if output_directory is not None else configured_output_directory()
     if not directory.is_dir():
@@ -148,7 +161,26 @@ def export_xlsx(
     rows = read_snapshot(database_path, table_name, columns)
     if expected_records is not None and len(rows) != expected_records:
         raise XlsxExportError("本次 SQLite 筆數與 XLSX 匯出筆數不符")
-    workbook = build_workbook(rows, columns, boolean_columns)
+    if not excluded_columns.issubset(columns):
+        raise XlsxExportError("XLSX 排除欄位不在 SQLite schema 中")
+    if not set(sort_columns).issubset(columns):
+        raise XlsxExportError("XLSX 排序欄位不在 SQLite schema 中")
+    visible_indices = [index for index, name in enumerate(columns) if name not in excluded_columns]
+    visible_columns = tuple(columns[index] for index in visible_indices)
+    if column_widths is not None and not set(column_widths).issubset(visible_columns):
+        raise XlsxExportError("XLSX 欄寬設定欄位不在匯出欄位中")
+    sort_indices = tuple(columns.index(name) for name in sort_columns)
+    if sort_indices:
+        rows.sort(key=lambda row: tuple(
+            (row[index] is None, str(row[index]) if row[index] is not None else "")
+            for index in sort_indices
+        ))
+    visible_rows = [tuple(row[index] for index in visible_indices) for row in rows]
+    workbook = build_workbook(
+        visible_rows, visible_columns, boolean_columns,
+        row_height=row_height, vertical_alignment=vertical_alignment,
+        column_widths=column_widths,
+    )
     date = (now or datetime.now(ZoneInfo("Asia/Taipei"))).astimezone(
         ZoneInfo("Asia/Taipei")
     ).strftime("%m%d")
@@ -172,7 +204,7 @@ def export_xlsx(
         export_done = True
         return {
             "status": "success", "records_exported": len(rows),
-            "columns_exported": len(columns), "output_file": str(output_file),
+            "columns_exported": len(visible_columns), "output_file": str(output_file),
         }
     except OSError as exc:
         raise XlsxExportError(f"XLSX 寫入失敗: {type(exc).__name__}") from exc

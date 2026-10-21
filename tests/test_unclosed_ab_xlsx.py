@@ -96,6 +96,7 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     assert tuple(cell.value for cell in sheet[1]) == columns()
     assert sheet.max_column == 15 and sheet.max_row == 2
     assert sheet.cell(2, 8).value == "new"
+    assert sheet.cell(2, 8).fill.patternType is None
     assert sheet.cell(2, 5).value is True
     assert sheet.cell(2, 9).value is None
     assert sheet.cell(2, 10).value is True
