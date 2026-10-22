@@ -126,6 +126,9 @@ def test_status_checks_write_matching_export_notes_only(monkeypatch, tmp_path, c
     cases = [
         ("depot-open", (None, 1, 0, 0, 0, 0), "原備註", "段修工單未處理完成"),
         ("depot-approval", (None, 1, 0, 1, 0, 0), None, "等候段修工單簽核中"),
+        ("pending-unprocessed", (None, 0, 0, 1, 0, 0), "原備註", "未處理"),
+        ("checked-pending-unprocessed", (0, 0, 0, 1, 0, 0), "原備註", "未處理"),
+        ("not-pending-unprocessed", (None, 0, 0, 0, 0, 0), "原備註", "原備註"),
         ("closable", (None, 1, 1, 0, 0, 0), None, "可結案"),
         ("unprocessed", (0, 0, 0, 0, 0, 0), None, "未處理"),
         ("different-sufficient", (1, 1, 0, 0, 0, 0), "=SUM(1,2)", "=SUM(1,2)"),
