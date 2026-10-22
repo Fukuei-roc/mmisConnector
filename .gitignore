@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 /Prompt.md
+/promptTemplate.md
 node_modules/
 .DS_Store
 dist/

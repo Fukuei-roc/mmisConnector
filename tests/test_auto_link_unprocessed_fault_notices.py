@@ -103,7 +103,7 @@ def test_batch_queries_normalized_vehicle_but_preserves_source_value(
             linker_factory=lambda _: linker,
         ).run()
         stored = store.connection.execute(
-            "SELECT vehicle FROM fault_notices WHERE run_id = ?",
+            "SELECT vehicle FROM auto_link_state WHERE run_id = ?",
             (result["run_id"],),
         ).fetchone()
 
@@ -346,7 +346,7 @@ def test_resume_reconciles_confirmed_link_without_replaying_write(tmp_path) -> N
     with AutoLinkStore(database) as store:
         second = workflow(store).run()
         row = store.connection.execute(
-            "SELECT processing_status, attempt_count FROM fault_notices WHERE run_id = ?",
+            "SELECT processing_status, attempt_count FROM auto_link_state WHERE run_id = ?",
             (second["run_id"],),
         ).fetchone()
         assert second["resumed"] is True
@@ -417,7 +417,7 @@ def test_unexpected_link_exception_is_redacted(tmp_path) -> None:
         ).run()
         run_id = result["run_id"]
         row = store.connection.execute(
-            "SELECT result_message FROM fault_notices WHERE run_id = ?", (run_id,)
+            "SELECT result_message FROM auto_link_state WHERE run_id = ?", (run_id,)
         ).fetchone()
         assert "secret" not in row["result_message"]
         assert "人工確認" in row["result_message"]

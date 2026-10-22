@@ -49,6 +49,23 @@ PROCESSING_STATUSES = frozenset(
 RETRYABLE_STATUSES = ("pending", "query_failed", "work_order_selected")
 UNSETTLED_STATUSES = (*RETRYABLE_STATUSES, "linking", "link_error")
 LINK_INTERRUPTED_MESSAGE = "前次勾稽結果不明，需人工確認；程式未自動重送"
+RESULT_COLUMNS = (
+    "查詢時間", "車次", "車組/車號", "發生日期", "事故等級", "ATP故障",
+    "故障現象", "狀態", "通報號", "已關聯的工單", "執行結果",
+)
+OLD_RESULT_COLUMNS = (*RESULT_COLUMNS[:-1], "關聯執行成功")
+RESULT_PROJECTION = """
+    strftime('%Y-%m-%dT%H:%M:%S', created_at, '+8 hours') || '+08:00',
+    train_no, vehicle, occurrence_date, incident_level, atp_fault,
+    fault_symptom, source_status, fault_notice_no,
+    CASE WHEN processing_status = 'linked'
+        THEN daily_inspection_work_order_no END,
+    CASE WHEN processing_status = 'linked' THEN '是'
+         WHEN processing_status IN ('linking', 'link_error') THEN '否'
+         WHEN processing_status = 'no_matching_work_order'
+             THEN '未找到對應日檢工單'
+         ELSE '未執行' END
+"""
 
 
 @dataclass(frozen=True)
@@ -65,9 +82,13 @@ class AutoLinkStore:
         self.path = Path(database_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(self.path)
-        self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA foreign_keys = ON")
-        self._initialize_schema()
+        try:
+            self.connection.row_factory = sqlite3.Row
+            self.connection.execute("PRAGMA foreign_keys = ON")
+            self._initialize_schema()
+        except BaseException:
+            self.connection.close()
+            raise
 
     def close(self) -> None:
         self.connection.close()
@@ -104,9 +125,9 @@ class AutoLinkStore:
         source_columns = ",\n".join(
             f"{column} TEXT" for _, column in SOURCE_FIELDS
         )
-        self.connection.executescript(
-            f"""
-            CREATE TABLE IF NOT EXISTS runs (
+        with self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
+            self.connection.execute("""CREATE TABLE IF NOT EXISTS runs (
                 run_id TEXT PRIMARY KEY,
                 status TEXT NOT NULL CHECK (status IN ('running', 'completed')),
                 source_loaded INTEGER NOT NULL DEFAULT 0
@@ -114,9 +135,12 @@ class AutoLinkStore:
                 source_query_name TEXT,
                 started_at TEXT NOT NULL,
                 completed_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS fault_notices (
+            )""")
+            existing = self.connection.execute(
+                "SELECT type FROM sqlite_master WHERE name = 'fault_notices'"
+            ).fetchone()
+            if existing is None:
+                self.connection.execute(f"""CREATE TABLE auto_link_state (
                 id INTEGER PRIMARY KEY,
                 run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
                 source_index INTEGER NOT NULL,
@@ -141,13 +165,88 @@ class AutoLinkStore:
                 updated_at TEXT NOT NULL,
                 UNIQUE (run_id, source_index),
                 UNIQUE (run_id, fault_notice_no)
-            );
+            )""")
+            elif existing["type"] == "table" and any(
+                row[1] == "run_id" for row in self.connection.execute(
+                    "PRAGMA table_info(fault_notices)"
+                )
+            ):
+                self.connection.execute('DROP VIEW IF EXISTS "自動勾稽結果"')
+                self.connection.execute(
+                    "ALTER TABLE fault_notices RENAME TO auto_link_state"
+                )
+            elif existing["type"] != "table":
+                raise ValueError("fault_notices 必須是資料表")
 
-            CREATE INDEX IF NOT EXISTS idx_fault_notices_run_status
-            ON fault_notices(run_id, processing_status, source_index);
+            self.connection.execute("""
+                CREATE INDEX IF NOT EXISTS idx_fault_notices_run_status
+                ON auto_link_state(run_id, processing_status, source_index)
+            """)
+            result_table_exists = self.connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                "AND name = 'fault_notices'"
+            ).fetchone() is not None
+            columns = ", ".join(f'"{name}" TEXT' for name in RESULT_COLUMNS)
+            self.connection.execute(
+                f"CREATE TABLE IF NOT EXISTS fault_notices ({columns})"
+            )
+            actual = tuple(row[1] for row in self.connection.execute(
+                "PRAGMA table_info(fault_notices)"
+            ))
+            if actual == OLD_RESULT_COLUMNS:
+                self.connection.execute(
+                    'ALTER TABLE fault_notices RENAME COLUMN "關聯執行成功" TO "執行結果"'
+                )
+                self.connection.execute("""
+                    UPDATE fault_notices SET "執行結果" = '未找到對應日檢工單'
+                    WHERE rowid IN (
+                        SELECT id FROM auto_link_state
+                        WHERE processing_status = 'no_matching_work_order'
+                    )
+                """)
+                for trigger in (
+                    "auto_link_result_insert",
+                    "auto_link_result_update",
+                    "auto_link_result_delete",
+                ):
+                    self.connection.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+                actual = RESULT_COLUMNS
+            if actual != RESULT_COLUMNS:
+                raise ValueError("fault_notices 欄位與預期結果不符")
+            result_columns = ", ".join(f'"{name}"' for name in RESULT_COLUMNS)
+            result_insert = f"""
+                INSERT INTO fault_notices(rowid, {result_columns})
+                SELECT id, {RESULT_PROJECTION}
+                FROM auto_link_state WHERE id = new.id;
             """
-        )
-        self.connection.commit()
+            if not result_table_exists:
+                self.connection.execute(f"""
+                    INSERT INTO fault_notices(rowid, {result_columns})
+                    SELECT id, {RESULT_PROJECTION} FROM auto_link_state
+                """)
+            self.connection.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS auto_link_result_insert
+                AFTER INSERT ON auto_link_state BEGIN
+                    {result_insert}
+                END
+            """)
+            self.connection.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS auto_link_result_update
+                AFTER UPDATE ON auto_link_state BEGIN
+                    DELETE FROM fault_notices WHERE rowid = old.id;
+                    {result_insert}
+                END
+            """)
+            self.connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS auto_link_result_delete
+                AFTER DELETE ON auto_link_state BEGIN
+                    DELETE FROM fault_notices WHERE rowid = old.id;
+                END
+            """)
+            self.connection.execute('''
+                CREATE VIEW IF NOT EXISTS "自動勾稽結果" AS
+                SELECT * FROM fault_notices
+            ''')
 
     def prepare_run(self) -> RunPreparation:
         now = self._now()
@@ -166,7 +265,7 @@ class AutoLinkStore:
                 run_id = str(active["run_id"])
                 self.connection.execute(
                     """
-                    UPDATE fault_notices
+                    UPDATE auto_link_state
                     SET processing_status = 'link_error',
                         result_message = ?,
                         updated_at = ?
@@ -180,7 +279,7 @@ class AutoLinkStore:
                     source_loaded=bool(active["source_loaded"]),
                 )
 
-            self.connection.execute("DELETE FROM fault_notices")
+            self.connection.execute("DELETE FROM auto_link_state")
             self.connection.execute("DELETE FROM runs")
             run_id = uuid4().hex
             self.connection.execute(
@@ -210,7 +309,7 @@ class AutoLinkStore:
         columns = [column for _, column in SOURCE_FIELDS]
         placeholders = ", ".join("?" for _ in range(len(columns) + 6))
         sql = f"""
-            INSERT INTO fault_notices(
+            INSERT INTO auto_link_state(
                 run_id, source_index, {', '.join(columns)},
                 source_record_json, processing_status, created_at, updated_at
             ) VALUES ({placeholders})
@@ -262,7 +361,7 @@ class AutoLinkStore:
         placeholders = ", ".join("?" for _ in RETRYABLE_STATUSES)
         rows = self.connection.execute(
             f"""
-            SELECT * FROM fault_notices
+            SELECT * FROM auto_link_state
             WHERE run_id = ? AND processing_status IN ({placeholders})
             ORDER BY source_index
             """,
@@ -274,7 +373,7 @@ class AutoLinkStore:
         rows = self.connection.execute(
             """
             SELECT id, fault_notice_no, daily_inspection_work_order_no
-            FROM fault_notices
+            FROM auto_link_state
             WHERE run_id = ? AND processing_status = 'link_error'
             ORDER BY source_index
             """,
@@ -286,7 +385,7 @@ class AutoLinkStore:
         with self.connection:
             cursor = self.connection.execute(
                 """
-                UPDATE fault_notices
+                UPDATE auto_link_state
                 SET attempt_count = attempt_count + 1, updated_at = ?
                 WHERE run_id = ? AND id = ?
                 """,
@@ -309,7 +408,7 @@ class AutoLinkStore:
         with self.connection:
             cursor = self.connection.execute(
                 """
-                UPDATE fault_notices
+                UPDATE auto_link_state
                 SET processing_status = ?,
                     daily_inspection_work_order_no = COALESCE(
                         ?, daily_inspection_work_order_no
@@ -325,7 +424,7 @@ class AutoLinkStore:
 
     def get_row(self, run_id: str, row_id: int) -> dict[str, Any]:
         row = self.connection.execute(
-            "SELECT * FROM fault_notices WHERE run_id = ? AND id = ?",
+            "SELECT * FROM auto_link_state WHERE run_id = ? AND id = ?",
             (run_id, row_id),
         ).fetchone()
         if row is None:
@@ -338,7 +437,7 @@ class AutoLinkStore:
             unsettled = self.connection.execute(
                 f"""
                 SELECT COUNT(*)
-                FROM fault_notices
+                FROM auto_link_state
                 WHERE run_id = ? AND processing_status IN ({placeholders})
                 """,
                 (run_id, *UNSETTLED_STATUSES),
@@ -359,7 +458,7 @@ class AutoLinkStore:
         rows = self.connection.execute(
             """
             SELECT processing_status, COUNT(*) AS count
-            FROM fault_notices
+            FROM auto_link_state
             WHERE run_id = ?
             GROUP BY processing_status
             """,
