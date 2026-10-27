@@ -95,17 +95,17 @@ def fill_latest_periodic_inspection_work_orders(
             continue
         values: tuple[str, ...] | None = None
         for _ in range(MAX_ATTEMPTS):
-            if query is None:
-                query = query_factory()
             try:
+                if query is None:
+                    query = query_factory()
                 result = query.run(str(vehicle).strip())
-                candidate = tuple(str(result[field]).strip() for field in HEADERS[1:])
-                if not all(candidate):
-                    raise ValueError("查詢結果缺少必要欄位")
-                values = candidate
-                break
-            except Exception:
+            except MMISClientError:
                 query = None
+                continue
+            values = tuple(str(result[field]).strip() for field in HEADERS[1:])
+            if not all(values):
+                raise ValueError("查詢結果缺少必要欄位")
+            break
         if values is None:
             failed_rows.append(row_number)
             continue

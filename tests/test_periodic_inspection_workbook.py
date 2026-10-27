@@ -116,6 +116,76 @@ def test_exhausted_retries_continue_and_rerun_only_incomplete_rows(tmp_path: Pat
     assert read_rows(path)[2] == ("814", "2A", "115-2A-1", "2026/10/27")
 
 
+def test_query_creation_failure_retries_then_succeeds(tmp_path: Path) -> None:
+    path = tmp_path / "vehicles.xlsx"
+    make_workbook(path, ["813", "814"])
+    created = 0
+
+    class Query:
+        def run(self, vehicle: str) -> dict[str, str]:
+            return result(vehicle)
+
+    def factory() -> Query:
+        nonlocal created
+        created += 1
+        if created == 1:
+            raise MMISClientError("MMIS session 建立失敗")
+        return Query()
+
+    workbook = batch.load_validated_workbook(path)
+    summary = batch.fill_latest_periodic_inspection_work_orders(workbook, path, factory)
+    workbook.close()
+    assert summary.processed == 2
+    assert created == 2
+    assert read_rows(path)[1][1:] == ("2A", "115-2A-1", "2026/10/27")
+
+
+def test_exhausted_query_creation_failure_continues_next_row(tmp_path: Path) -> None:
+    path = tmp_path / "vehicles.xlsx"
+    make_workbook(path, ["813", "814"])
+    created = 0
+
+    class Query:
+        def run(self, vehicle: str) -> dict[str, str]:
+            return result(vehicle)
+
+    def factory() -> Query:
+        nonlocal created
+        created += 1
+        if created <= batch.MAX_ATTEMPTS:
+            raise MMISClientError("MMIS session 建立失敗")
+        return Query()
+
+    workbook = batch.load_validated_workbook(path)
+    summary = batch.fill_latest_periodic_inspection_work_orders(workbook, path, factory)
+    workbook.close()
+    assert summary.as_dict() == {
+        "success": False, "processed": 1, "skipped": 0, "failed": 1, "failed_rows": [2]
+    }
+    assert created == 4
+    assert read_rows(path)[1] == ("813", None, None, None)
+    assert read_rows(path)[2] == ("814", "2A", "115-2A-1", "2026/10/27")
+
+
+def test_unexpected_query_error_fails_fast(tmp_path: Path) -> None:
+    path = tmp_path / "vehicles.xlsx"
+    make_workbook(path, ["813", "814"])
+    calls = 0
+
+    class Query:
+        def run(self, vehicle: str) -> dict[str, str]:
+            nonlocal calls
+            calls += 1
+            raise RuntimeError("bug")
+
+    workbook = batch.load_validated_workbook(path)
+    with pytest.raises(RuntimeError, match="bug"):
+        batch.fill_latest_periodic_inspection_work_orders(workbook, path, Query)
+    workbook.close()
+    assert calls == 1
+    assert read_rows(path)[1] == ("813", None, None, None)
+
+
 def test_blank_vehicle_and_complete_row_are_skipped(tmp_path: Path) -> None:
     path = tmp_path / "vehicles.xlsx"
     make_workbook(path, ["", "813"])
