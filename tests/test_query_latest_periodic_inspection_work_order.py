@@ -245,6 +245,8 @@ def test_recorded_filtered_response_matches_parser_contract() -> None:
     assert parse_maximo_page_info(
         response, table_prefix=schema.prefix, context_name="定期檢修工單"
     ).total == len(rows) == 19
+    assert {row["車組/車號"] for row in rows} == {"EMU813"}
+    assert {row["檢修級別"] for row in rows} == {"2A", "3A"}
     latest = max(rows, key=lambda row: (row["檢修日期"], row["工作單"]))
     assert {field: latest[field] for field in ("車組/車號", "檢修級別", "工作單", "檢修日期")} == {
         "車組/車號": "EMU813",
