@@ -1,6 +1,6 @@
 # 專案地圖
 
-狀態：已更新（2026-10-02）。
+狀態：已更新（2026-10-27）。
 
 在專案導入（intake）時填寫這份文件。
 
@@ -45,6 +45,8 @@
 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | Development tool：依工作單號讀取故障通報 | 只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` | Development tool：依工作單號查詢日檢工單明細 | 唯讀、只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001` | Development tool：查詢定期檢修工單備註非空的檢修記錄 | 唯讀、只輸出 stdout JSON |
+| `python -m tools.mmis_development.query_periodic_inspection_work_order_air_hose_date 115-3A-68700-001` | Development tool：依車型讀取定期檢修工單附表一的安裝日期或空氣軟管資料 | 唯讀；支援 600、700、800 型，其他車型輸出 JSON 業務結果 |
+| `python -m tools.mmis_development.auto_query_air_hose_dates` | Development tool：依來源活頁簿逐筆查詢定期檢修工單空氣軟管日期，輸出七欄 Excel 並支援逐筆續跑 | 唯讀 MMIS；結果與隱藏進度逐筆原子保存 |
 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C2-41266` | Development tool：查詢臨時檢修工單明細；先查預設清單，0 筆才切所有記錄；讀取基本資料、已勾稽故障通報、維修程序概況與試車報告 | 唯讀、只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | Development tool：勾稽指定故障通報 | 會變更 MMIS；需受控執行 |
 | `python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders` | 批次將未處理通報勾稽至最早的後續日檢工單 | 會變更 MMIS 資料；以 SQLite 續跑，`link_error` 不自動重送 |

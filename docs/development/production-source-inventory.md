@@ -32,6 +32,8 @@
 | `temporary_repair/reader.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `TemporaryRepairProcedureReader` | 保留；封裝唯讀查詢、唯一工單驗證與紀事清單分頁 |
 | `periodic_inspection/__init__.py` | B：domain package boundary | Auto-link 不使用 | 保留；標示定期檢修工單 domain |
 | `periodic_inspection/reader.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `PeriodicInspectionWorkOrderDetailReader` | 保留；封裝唯讀查詢、唯一工單驗證及檢修記錄分頁 |
+| `periodic_inspection/workbook.py` | B：定期檢修批次活頁簿元件 | Auto-link 不使用；development tool 呼叫批次回填功能 | 保留；驗證輸入活頁簿並逐列原子保存最新工單資料 |
+| `periodic_inspection/air_hose_workbook.py` | B：定期檢修批次活頁簿元件 | Auto-link 不使用；development tool 呼叫空氣軟管日期批次功能 | 保留；驗證來源與續跑狀態，並原子保存量測資料和 checkpoint |
 | `auto_link/__init__.py` | B：application package boundary | 標示 auto-link application；不擴張 root public API | 保留 |
 | `auto_link/orchestrator.py` | A：Production application | 正式 orchestrator 與 business rules | 保留 |
 | `auto_link/store.py` | A：Auto-link 必要 | Orchestrator 直接使用 SQLite batch state | 保留 |

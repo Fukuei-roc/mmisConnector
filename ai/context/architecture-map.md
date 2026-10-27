@@ -1,6 +1,6 @@
 # 架構地圖
 
-狀態：已更新（2026-09-29）。
+狀態：已更新（2026-10-27）。
 
 ## 系統總覽
 
@@ -45,3 +45,7 @@ Linker 再重用 `MaximoEventClient`、`MMISSession` 與 `parser`。五個單一
 `tools/mmis_development/`，是平行的 development／diagnostic tools，不是正式 CLI 或
 auto-link runtime dependency。詳細圖與新功能搜尋流程見
 `docs/development/mmis-feature-workflow.md`。
+
+## 定期檢修 Excel 批次
+
+`periodic_inspection.air_hose_workbook` 讀取指定的來源活頁簿，依序呼叫定期檢修 Reader，並將每筆量測與完成狀態同檔原子保存。隱藏進度工作表以來源列號識別完成項目；development tool 只負責載入設定、建立 Reader factory 與輸出 JSON 摘要。此批次不屬於 production CLI，也不修改 MMIS 遠端資料。

@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from openpyxl import load_workbook
 from openpyxl.workbook.workbook import Workbook
+import requests
 
 from ..auth import MMISClientError
 from ..daily_inspection.reader import normalize_work_order
@@ -60,11 +61,20 @@ class CompletedOrder:
 class BatchResult:
     processed: int
     skipped: int
-    unsupported: int
-    empty: int
+    unsupported_rows: tuple[int, ...]
+    empty_rows: tuple[int, ...]
     failed_rows: tuple[int, ...]
     failed_work_orders: tuple[str, ...]
+    failed_error_types: tuple[str, ...]
     measurement_rows: int
+
+    @property
+    def unsupported(self) -> int:
+        return len(self.unsupported_rows)
+
+    @property
+    def empty(self) -> int:
+        return len(self.empty_rows)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -72,11 +82,14 @@ class BatchResult:
             "processed": self.processed,
             "skipped": self.skipped,
             "unsupported": self.unsupported,
+            "unsupported_rows": list(self.unsupported_rows),
             "empty": self.empty,
+            "empty_rows": list(self.empty_rows),
             "measurements": self.measurement_rows,
             "failed": len(self.failed_rows),
             "failed_rows": list(self.failed_rows),
             "failed_work_orders": list(self.failed_work_orders),
+            "failed_error_types": list(self.failed_error_types),
         }
 
 
@@ -133,20 +146,18 @@ def _load_source(path: Path) -> tuple[tuple[SourceOrder, ...], str]:
         if tuple(sheet.cell(1, column).value for column in range(1, 5)) != SOURCE_HEADERS:
             raise MMISClientError("來源 Excel A 至 D 欄標題不符")
         orders: list[SourceOrder] = []
-        seen_work_orders: set[str] = set()
         for row_number in range(2, sheet.max_row + 1):
             cells = tuple(sheet.cell(row_number, column) for column in range(1, 5))
             values = tuple(cell.value for cell in cells)
             if not any(_present(value) for value in values):
                 continue
-            if any(cell.data_type == "f" for cell in cells) or not all(
-                _present(value) and not isinstance(value, (bool, complex)) for value in values
-            ):
-                raise MMISClientError(f"來源 Excel 第 {row_number} 列資料不完整或含公式")
+            if any(cell.data_type == "f" for cell in cells):
+                raise MMISClientError(f"來源 Excel 第 {row_number} 列含公式")
+            if any(isinstance(value, (bool, complex)) for value in values):
+                raise MMISClientError(f"來源 Excel 第 {row_number} 列資料型態無效")
+            if not _present(values[2]):
+                raise MMISClientError(f"來源 Excel 第 {row_number} 列缺少工作單")
             work_order = normalize_work_order(str(values[2]))
-            if work_order in seen_work_orders:
-                raise MMISClientError(f"來源 Excel 工作單重複：第 {row_number} 列")
-            seen_work_orders.add(work_order)
             typed_values = (values[0], values[1], values[2], values[3])
             orders.append(SourceOrder(
                 row_number, typed_values, work_order,
@@ -270,7 +281,6 @@ def _parse_result(source: SourceOrder, result: object) -> CompletedOrder:
     if (
         result.get("success") is not True
         or result.get("工作單") != source.work_order
-        or str(result.get("車組/車號", "")).strip() != str(source.values[0]).strip()
         or type(supported) is not bool
         or not isinstance(records, list)
         or type(count) is not int
@@ -378,15 +388,17 @@ def query_air_hose_dates_to_workbook(
         workbook = _load_output(output_path)
         try:
             completed = _load_completed(workbook, source_orders, fingerprint)
-            processed = skipped = unsupported = empty = 0
+            processed = skipped = 0
             failed_rows: list[int] = []
             failed_work_orders: list[str] = []
+            failed_error_types: list[str] = []
             reader: AirHoseReader | None = None
             for source in source_orders:
                 if source.row_number in completed:
                     skipped += 1
                     continue
                 item: CompletedOrder | None = None
+                last_error: MMISClientError | None = None
                 for _ in range(MAX_ATTEMPTS):
                     try:
                         if reader is None:
@@ -394,23 +406,39 @@ def query_air_hose_dates_to_workbook(
                         item = _parse_result(
                             source, reader.run_air_hose_dates(source.work_order),
                         )
-                    except MMISClientError:
+                    except MMISClientError as exc:
+                        last_error = exc
                         reader = None
                         continue
                     break
                 if item is None:
                     failed_rows.append(source.row_number)
                     failed_work_orders.append(source.work_order)
+                    cause = last_error.__cause__ if last_error is not None else None
+                    failed_error_types.append(
+                        type(cause).__name__
+                        if isinstance(cause, requests.RequestException)
+                        else type(last_error).__name__
+                        if last_error is not None
+                        else "UnknownError"
+                    )
                     continue
                 completed[source.row_number] = item
                 _render(workbook, completed)
                 _save_atomic(workbook, output_path)
                 processed += 1
-                unsupported += item.status == "unsupported"
-                empty += item.status == "empty"
+            unsupported_rows = tuple(
+                row for row, item in sorted(completed.items())
+                if item.status == "unsupported"
+            )
+            empty_rows = tuple(
+                row for row, item in sorted(completed.items())
+                if item.status == "empty"
+            )
             return BatchResult(
-                processed, skipped, unsupported, empty,
+                processed, skipped, unsupported_rows, empty_rows,
                 tuple(failed_rows), tuple(failed_work_orders),
+                tuple(failed_error_types),
                 sum(len(item.rows) for item in completed.values()),
             )
         finally:

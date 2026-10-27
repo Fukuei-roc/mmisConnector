@@ -1,18 +1,19 @@
 # 程式碼搜尋指南
 
-狀態：已更新（2026-09-29）。
+狀態：已更新（2026-10-27）。
 
 ## 搜尋入口
 
 | 需求 | 從這裡開始 | 搜尋關鍵字 |
 |---|---|---|
 | Production CLI | `src/mmis_connector/cli.py` | `AUTO_LINK_*_COMMAND`, `_commands` |
-| Development tools | `tools/mmis_development/` | `execute`, `main`, `USAGE` |
+| Development tools | `tools/mmis_development/` | `execute`, `main`, `USAGE`, `auto_query_air_hose_dates` |
 | 登入與網路邊界 | `src/mmis_connector/auth.py` | `MMISSession`, `MMISConfig`, `PageState` |
 | Maximo event | `src/mmis_connector/events.py` | `MaximoEventClient`, `load_app`, `post`, `post_events` |
 | 故障通報 domain | `src/mmis_connector/fault_notices/` | `UnprocessedFaultNoticeQuery`, `UnclosedFaultNoticeQuery`, `FaultNoticeAnalysisReader`, `run` |
 | 日檢工單 domain | `src/mmis_connector/daily_inspection/` | `Query`, `Reader`, `Linker` |
 | Auto-link application | `src/mmis_connector/auto_link/` | `orchestrator`, `store`, `AutoLink` |
+| 定期檢修批次 Excel | `src/mmis_connector/periodic_inspection/air_hose_workbook.py` | `query_air_hose_dates_to_workbook`, `_air_hose_progress` |
 | 表格解析 | `src/mmis_connector/parser.py` | `parse_maximo_table`, `parse_*_page_info` |
 | 測試 | `tests/test_*.py` | 對應功能模組或共用層名稱 |
 | 新 MMIS 功能／已驗證操作 | `docs/development/mmis-feature-workflow.md` | `Query`, `Reader`, `Linker`, `MaximoEventClient`, `parse_` |
@@ -29,6 +30,7 @@
 | `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/daily_inspection/reader.py` |
 | `DailyInspectionInspectionRecordReader` | 依工作單號讀取 1A 工單檢修記錄中備註非空的列 | `src/mmis_connector/daily_inspection/reader.py` |
 | `PeriodicInspectionWorkOrderDetailReader` | 依工作單號讀取定期檢修工單檢修記錄中備註非空的四欄資料 | `src/mmis_connector/periodic_inspection/reader.py` |
+| `query_air_hose_dates_to_workbook` | 逐筆查詢定期檢修工單空氣軟管資料，將結果和續跑記錄原子寫入 Excel | `src/mmis_connector/periodic_inspection/air_hose_workbook.py` |
 | `DailyInspectionWorkOrderFaultNoticeLinker` | 對唯一 1A 工單勾稽指定故障通報、驗證結果並返回清單 | `src/mmis_connector/daily_inspection/linker.py` |
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/fault_notices/query.py` |
 | `UnclosedFaultNoticeQuery` | 以固定新竹機務段、A/B 級條件查詢未結案故障通報 | `src/mmis_connector/fault_notices/query.py` |

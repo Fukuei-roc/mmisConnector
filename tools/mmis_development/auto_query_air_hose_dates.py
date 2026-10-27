@@ -21,11 +21,12 @@ USAGE = "python -m tools.mmis_development.auto_query_air_hose_dates"
 def execute(args: Sequence[str]) -> dict[str, object]:
     if args:
         raise MMISClientError(f"用法: {USAGE}")
+    config = MMISConfig.from_env()
     result = query_air_hose_dates_to_workbook(
         DEFAULT_SOURCE,
         DEFAULT_OUTPUT,
         lambda: PeriodicInspectionWorkOrderDetailReader(
-            MMISSession(MMISConfig.from_env())
+            MMISSession(config)
         ),
     )
     return {**result.as_dict(), "output_file": str(DEFAULT_OUTPUT)}
