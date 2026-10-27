@@ -67,7 +67,7 @@ def run_query(monkeypatch: pytest.MonkeyPatch, *pages: str):
     query = LatestPeriodicInspectionWorkOrderQuery(client)
     calls = []
     responses = iter(
-        ["<div>mainrec_menus</div>", table([]), "", "", "", *pages]
+        ["<div>mainrec_menus</div>", table([]), "", "", "", "", *pages]
     )
     monkeypatch.setattr(
         query.events,
@@ -87,40 +87,42 @@ def test_latest_row_across_pages_and_recorded_event_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = table(
-        [("EMU701", "1A", "115-1A-70001", "2026/09/01")],
+        [("EMU813", "2A", "115-2A-68000-001", "2026/09/01")],
         total=2,
         next_page=True,
     )
     second = table(
-        [("EMU701", "2A", "115-2A-74357-001", "2026/10/15")],
+        [("EMU813", "3A", "115-3A-68700-001", "2026/09/14")],
         start=2,
         total=2,
     )
     query, calls = run_query(monkeypatch, first, second)
 
-    assert query.run(" 701 ") == {
-        "車組/車號": "EMU701",
-        "檢修級別": "2A",
-        "工作單": "115-2A-74357-001",
-        "檢修日期": "2026/10/15",
+    assert query.run(" 813 ") == {
+        "車組/車號": "EMU813",
+        "檢修級別": "3A",
+        "工作單": "115-3A-68700-001",
+        "檢修日期": "2026/09/14",
     }
     assert [(call["event_type"], call["value"]) for call in calls] == [
         ("click", ""),
         ("click", "useAllRecsQuery_OPTION"),
-        ("setvalue", "701"),
+        ("setvalue", "813"),
+        ("setvalue", "2A,3A"),
         ("setvalue", "檢查室"),
         ("setvalue", "工單結案,簽核中"),
         ("filterrows", ""),
         ("click", ""),
     ]
-    assert [call["target_id"] for call in calls[2:6]] == [
+    assert [call["target_id"] for call in calls[2:7]] == [
         "list_tfrow_[C:1]_txt-tb",
+        "list_tfrow_[C:3]_txt-tb",
         "list_tfrow_[C:7]_txt-tb",
         "list_tfrow_[C:8]_txt-tb",
         "list_tbod_tfrow-tr",
     ]
     assert calls[-1]["target_id"] == "list-ti2"
-    assert [call["xhr_seq"] for call in calls] == list(range(1, 8))
+    assert [call["xhr_seq"] for call in calls] == list(range(1, 9))
 
 
 def test_latest_date_wins_even_when_rows_are_unsorted(
@@ -130,7 +132,7 @@ def test_latest_date_wins_even_when_rows_are_unsorted(
         monkeypatch,
         table([
             ("EMU701", "2A", "115-2A-74357-001", "2026/10/15"),
-            ("EMU701", "1A", "115-1A-70001", "2026/09/01"),
+            ("EMU701", "3A", "115-3A-70001", "2026/09/01"),
         ]),
     )
     assert query.run("701")["工作單"] == "115-2A-74357-001"
@@ -156,6 +158,17 @@ def test_only_other_vehicle_returns_not_found(monkeypatch: pytest.MonkeyPatch) -
     )
     with pytest.raises(MMISClientError, match="找不到車組/車號 701"):
         query.run("701")
+
+
+def test_rejects_server_row_with_unrequested_inspection_level(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    query, _ = run_query(
+        monkeypatch,
+        table([("EMU813", "1A", "115-1A-99999", "2026/11/01")]),
+    )
+    with pytest.raises(MMISClientError, match="結果與篩選條件不符"):
+        query.run("813")
 
 
 def test_same_date_uses_work_order_number_as_tie_break(
@@ -231,11 +244,11 @@ def test_recorded_filtered_response_matches_parser_contract() -> None:
     assert schema is not None
     assert parse_maximo_page_info(
         response, table_prefix=schema.prefix, context_name="定期檢修工單"
-    ).total == len(rows) == 17
+    ).total == len(rows) == 19
     latest = max(rows, key=lambda row: (row["檢修日期"], row["工作單"]))
     assert {field: latest[field] for field in ("車組/車號", "檢修級別", "工作單", "檢修日期")} == {
-        "車組/車號": "EMU701",
-        "檢修級別": "2A",
-        "工作單": "115-2A-74357-001",
-        "檢修日期": "2026/10/15",
+        "車組/車號": "EMU813",
+        "檢修級別": "3A",
+        "工作單": "115-3A-68700-001",
+        "檢修日期": "2026/09/14",
     }

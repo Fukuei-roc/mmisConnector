@@ -11,6 +11,7 @@ from ..parser import parse_maximo_page_info, parse_maximo_table, parse_maximo_ta
 FIELDS = ("車組/車號", "檢修級別", "工作單", "檢修日期")
 REQUIRED_HEADERS = {*FIELDS, "檢修單位", "工作單狀態"}
 INSPECTION_UNIT = "檢查室"
+INSPECTION_LEVELS = ("2A", "3A")
 WORK_ORDER_STATUS = "工單結案,簽核中"
 
 
@@ -63,6 +64,7 @@ class LatestPeriodicInspectionWorkOrderQuery:
         for xhr_seq, (field, value) in enumerate(
             (
                 ("車組/車號", normalized_vehicle),
+                ("檢修級別", ",".join(INSPECTION_LEVELS)),
                 ("檢修單位", INSPECTION_UNIT),
                 ("工作單狀態", WORK_ORDER_STATUS),
             ),
@@ -84,14 +86,14 @@ class LatestPeriodicInspectionWorkOrderQuery:
             event_type="filterrows",
             target_id=filter_target,
             value="",
-            xhr_seq=6,
+            xhr_seq=7,
         )
 
         latest: dict[str, str] | None = None
         latest_key: tuple[datetime, str] | None = None
         expected_start = 1
         expected_total: int | None = None
-        xhr_seq = 7
+        xhr_seq = 8
         while True:
             page_schema = parse_maximo_table_schema(response, required_headers=REQUIRED_HEADERS)
             if page_schema.prefix != schema.prefix:
@@ -117,7 +119,8 @@ class LatestPeriodicInspectionWorkOrderQuery:
                 if not all(selected.values()):
                     raise MMISClientError("定期檢修工單結果缺少必要欄位")
                 if (
-                    str(row["檢修單位"]).strip() != INSPECTION_UNIT
+                    selected["檢修級別"] not in INSPECTION_LEVELS
+                    or str(row["檢修單位"]).strip() != INSPECTION_UNIT
                     or str(row["工作單狀態"]).strip() not in WORK_ORDER_STATUS.split(",")
                 ):
                     raise MMISClientError("定期檢修工單結果與篩選條件不符")
