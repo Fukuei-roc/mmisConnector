@@ -136,6 +136,28 @@ def test_latest_date_wins_even_when_rows_are_unsorted(
     assert query.run("701")["工作單"] == "115-2A-74357-001"
 
 
+def test_numeric_vehicle_does_not_match_another_trains_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    query, _ = run_query(
+        monkeypatch,
+        table([
+            ("EMU1701", "2A", "115-2A-99999", ""),
+            ("EMU701", "2A", "115-2A-74357-001", "2026/10/15"),
+        ]),
+    )
+    assert query.run("701")["工作單"] == "115-2A-74357-001"
+
+
+def test_only_other_vehicle_returns_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    query, _ = run_query(
+        monkeypatch,
+        table([("EMU1701", "2A", "115-2A-99999", "2026/11/01")]),
+    )
+    with pytest.raises(MMISClientError, match="找不到車組/車號 701"):
+        query.run("701")
+
+
 def test_same_date_uses_work_order_number_as_tie_break(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -196,7 +218,12 @@ def test_recorded_filtered_response_matches_parser_contract() -> None:
     from mmis_connector.parser import parse_maximo_page_info, parse_maximo_table
 
     har = json.loads(RECORDED_HAR.read_text(encoding="utf-8"))
-    response = har["log"]["entries"][350]["response"]["content"]["text"]
+    filtered = [
+        entry for entry in har["log"]["entries"]
+        if "filterrows" in entry["request"].get("postData", {}).get("text", "")
+    ]
+    assert len(filtered) == 1
+    response = filtered[0]["response"]["content"]["text"]
     schema, rows = parse_maximo_table(
         response,
         required_headers={"車組/車號", "檢修級別", "工作單", "檢修日期"},
@@ -205,7 +232,8 @@ def test_recorded_filtered_response_matches_parser_contract() -> None:
     assert parse_maximo_page_info(
         response, table_prefix=schema.prefix, context_name="定期檢修工單"
     ).total == len(rows) == 17
-    assert {field: rows[0][field] for field in ("車組/車號", "檢修級別", "工作單", "檢修日期")} == {
+    latest = max(rows, key=lambda row: (row["檢修日期"], row["工作單"]))
+    assert {field: latest[field] for field in ("車組/車號", "檢修級別", "工作單", "檢修日期")} == {
         "車組/車號": "EMU701",
         "檢修級別": "2A",
         "工作單": "115-2A-74357-001",

@@ -4,7 +4,6 @@ from datetime import datetime
 import re
 
 from ..auth import MMISClientError, MMISSession
-from ..daily_inspection.query import normalize_vehicle
 from ..events import MaximoEventClient
 from ..parser import parse_maximo_page_info, parse_maximo_table, parse_maximo_table_schema
 
@@ -15,15 +14,26 @@ INSPECTION_UNIT = "檢查室"
 WORK_ORDER_STATUS = "工單結案,簽核中"
 
 
-class LatestPeriodicInspectionWorkOrderQuery:
-    """Find the newest matching ZZ_PMWO work order across every result page."""
+def _normalize_vehicle(value: str) -> str:
+    vehicle = value.strip()
+    if not vehicle:
+        raise MMISClientError("車組/車號不得為空白")
+    return vehicle
 
+
+def _matches_vehicle(query: str, actual: str) -> bool:
+    if query.isdecimal():
+        return re.search(rf"(?<!\d){re.escape(query)}(?!\d)", actual) is not None
+    return query.casefold() == actual.casefold()
+
+
+class LatestPeriodicInspectionWorkOrderQuery:
     def __init__(self, client: MMISSession) -> None:
         self.client = client
         self.events = MaximoEventClient(client)
 
     def run(self, vehicle: str) -> dict[str, str]:
-        normalized_vehicle = normalize_vehicle(vehicle)
+        normalized_vehicle = _normalize_vehicle(vehicle)
         state, _ = self.events.load_app_with_response(
             app_value="ZZ_PMWO",
             favorite_focus="FavoriteApp_ZZ_PMWO",
@@ -102,10 +112,10 @@ class LatestPeriodicInspectionWorkOrderQuery:
                 raise MMISClientError("定期檢修工單分頁範圍與資料不一致")
             for row in rows:
                 selected = {field: str(row[field]).strip() for field in FIELDS}
+                if not _matches_vehicle(normalized_vehicle, selected["車組/車號"]):
+                    continue
                 if not all(selected.values()):
                     raise MMISClientError("定期檢修工單結果缺少必要欄位")
-                if normalized_vehicle not in selected["車組/車號"]:
-                    raise MMISClientError("定期檢修工單結果車組/車號與查詢條件不符")
                 if (
                     str(row["檢修單位"]).strip() != INSPECTION_UNIT
                     or str(row["工作單狀態"]).strip() not in WORK_ORDER_STATUS.split(",")
@@ -139,5 +149,5 @@ class LatestPeriodicInspectionWorkOrderQuery:
             )
             xhr_seq += 1
         if latest is None:
-            raise MMISClientError("定期檢修工單結果缺少資料")
+            raise MMISClientError(f"找不到車組/車號 {normalized_vehicle} 的定期檢修工單")
         return latest
