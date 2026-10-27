@@ -50,12 +50,21 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢日檢工單明細 | 輸入一個日檢工作單號；輸出基本資料、已勾稽故障通報、備註非空的檢修記錄、重要事項紀錄及檢修人員，完整欄位見 `recordings/README.md`。 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` |
 | 查詢定期檢修工單明細 | 輸入一個定期檢修工作單號；先查預設清單，確認零筆才切「所有記錄」重查。`success` 後依序直接輸出工作單、車組/車號、檢修級別、檢修日期、完工日期、工作單狀態六個第一層欄位。`維修程序概況` 取自檢修回報的紀事(備註)清單，含 count、records 及車組/車號、故障類別、故障類別說明、故障現象、故障原因、處置措施、材料編號(PA)、員工代號、人員姓名九欄。`檢修記錄` 只保留備註非空的列，含 count、records 及裝置名稱、檢修項目、回報結果、備註四欄。JSON 最後為動態資料頁簽的 `維修情形` 與 `維修情形(詳述)` 字串。 | `python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001` |
 | 查詢最新定期檢修工單 | 輸入車組/車號；查詢檢修級別為 2A 或 3A、檢修單位為檢查室、工作單狀態為工單結案或簽核中的定期檢修工單。讀取所有結果頁後，依檢修日期選出最新的一筆，直接印出車組/車號、檢修級別、工作單、檢修日期四欄 JSON，不產生檔案。查無資料或結果不完整時回傳錯誤 JSON 及非零結束碼。 | `python -m tools.mmis_development.query_latest_periodic_inspection_work_order 813` |
+| 批次回填最新定期檢修工單 | 讀取配屬車號總表的車組/車號，將最新檢修級別、工作單與檢修日期填回原 Excel。每列查詢最多嘗試三次；失敗後建立新 MMIS session 再試，三次失敗則保留原列並繼續。成功列立即儲存；重跑跳過已完成列。 | `python -m tools.mmis_development.fill_latest_periodic_inspection_work_orders` |
 | 依車號與日期查詢日檢工單 | 輸入車號與檢修日期條件；取得符合條件的日檢工單清單。 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` |
 | 依工作單號讀取明細 | 輸入日檢工作單號；取得該工單已勾稽的故障通報清單。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` |
 | 依工作單號勾稽故障通報 | 輸入日檢工作單號與通報號；將通報勾稽至工單並確認結果。 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` |
 
 最後一項會修改 MMIS 資料。只能在明確核准的受控 Live 驗證或人工單筆操作中使用；若
 結果不明，先人工確認，不得直接重送。
+
+批次回填工具預設讀寫 `C:\Users\NMMIS\Downloads\軔管日期統計\配屬車號總表.xlsx`，
+也可用 `--workbook <Excel 路徑>` 指定檔案。執行前檢查檔案存在、工作表為
+`最新檢修工單`，且 A 至 D 欄依序為 `車組/車號`、`檢修級別`、`工作單`、
+`檢修日期`。三個結果欄都有值的列視為已完成並跳過；其他有車號的列會重新查詢。
+工具使用同一 MMIS session 處理正常列，查詢失敗時重建 session 後重試。
+每筆成功後以同資料夾暫存檔原子替換原檔。輸出 JSON 摘要含成功、跳過、失敗數與失敗列號；
+仍有失敗列時結束碼為 1，可直接重跑接續。請勿同時在 Excel 中編輯該檔案。
 
 自動處理 A/B 級未結案故障通報先執行第一階段 snapshot。它在
 `data/unclosed_ab_fault_notices.db` 建立 15 欄的 `unclosed_ab_fault_notices` 資料表，

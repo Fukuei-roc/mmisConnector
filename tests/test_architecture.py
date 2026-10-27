@@ -123,6 +123,7 @@ def test_every_production_module_is_classified() -> None:
         "periodic_inspection/__init__.py",
         "periodic_inspection/query.py",
         "periodic_inspection/reader.py",
+        "periodic_inspection/workbook.py",
         "temporary_repair/__init__.py",
         "temporary_repair/reader.py",
     }
@@ -167,7 +168,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         if path.name not in {"__init__.py", "_support.py", "_unclosed_ab_xlsx.py"}
     ]
 
-    assert len(tool_paths) == 17
+    assert len(tool_paths) == 18
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {
