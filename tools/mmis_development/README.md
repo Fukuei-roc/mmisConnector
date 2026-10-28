@@ -44,7 +44,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢故障通報關聯的工單 | 輸入通報號；取得關聯的段檢修工單清單。 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
 | 查詢未處理故障通報 | 無需輸入；取得本段未處理故障通報清單。 | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
-| 自動處理 A/B 級未結案故障通報（開發階段） | 完整儲存待處理 A/B 級通報，逐筆查詢結案狀態檢查，將符合條件的 A 級通報移入等候結案資料庫；不修改 MMIS 資料。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices` |
+| 自動處理 A/B 級未結案故障通報（開發階段） | 同步通報與結案檢查；符合條件時以 AI 填寫並儲存 MMIS 一般故障分析，ATP 三欄全空且未完成時也填寫 ATP 故障分析；已確認的寫入逐項記入本機備註。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices` |
 | 自動處理 A/B 級未結案故障通報並匯出 XLSX | 先執行同一套 MMIS 查詢與 SQLite 全量同步，完整成功後再從本次更新的資料庫匯出 XLSX。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --export-xlsx` |
 | 查詢臨時檢修工單明細 | 輸入工作單號；取得工單基本資料、已勾稽故障通報、維修程序概況及試車報告。 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C1-41264` |
 | 查詢日檢工單明細 | 輸入一個日檢工作單號；輸出基本資料、已勾稽故障通報、備註非空的檢修記錄、重要事項紀錄及檢修人員，完整欄位見 `recordings/README.md`。 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` |

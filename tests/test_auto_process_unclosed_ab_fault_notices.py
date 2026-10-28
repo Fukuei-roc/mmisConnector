@@ -466,9 +466,9 @@ def test_default_queries_readiness_only_for_incomplete_analysis(
 
     monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
     written = []
-    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: {
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: tool.AIAnalysisProposal({
         field: field + "內容" for field in tool.WRITE_FIELDS
-    })
+    }))
     monkeypatch.setattr(tool, "write_ai_analysis", lambda number, values: written.append(number))
     summary = tool.execute([], database_path=path)
     assert calls == [
@@ -485,9 +485,128 @@ def test_default_queries_readiness_only_for_incomplete_analysis(
     assert summary["detail_checks_saved"] == 11
     assert written == (["incomplete"] if readiness else [])
     assert rows["incomplete"]["備註"] == (
-        "填寫故障分析完成" if readiness else None
+        "已填寫故障分析" if readiness else None
     )
     assert summary["fault_analysis_written"] == int(readiness)
+
+
+def _candidate_detail(number, *, check_analysis_readiness):
+    result = detail_result(number, True if check_analysis_readiness else None)
+    result["結案狀態檢查"]["Fault Analysis Completed"] = False
+    result["結案狀態檢查"]["ATP Fault Analysis Incomplete"] = True
+    return result
+
+
+def _proposal(*, partial=False):
+    return tool.AIAnalysisProposal(
+        {field: field + "內容" for field in tool.WRITE_FIELDS},
+        None if partial else {
+            field: field + "選項" for field in tool.ATP_ANALYSIS_FIELDS
+        },
+        partial,
+    )
+
+
+def test_atp_and_general_writes_are_verified_and_noted_in_order(monkeypatch, tmp_path):
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices", lambda: query_result(notice()))
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", _candidate_detail)
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: _proposal())
+    calls = []
+    monkeypatch.setattr(tool, "write_atp_analysis", lambda number, values: calls.append("atp"))
+    monkeypatch.setattr(tool, "write_ai_analysis", lambda number, values: calls.append("general"))
+
+    result = tool.execute([], database_path=path)
+
+    assert calls == ["atp", "general"]
+    assert result["atp_fault_analysis_written"] == result["fault_analysis_written"] == 1
+    assert read_rows(path)[0]["備註"] == "已填寫ATP故障分析\n已填寫故障分析"
+
+
+def test_partial_atp_skips_only_atp_write(monkeypatch, tmp_path):
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices", lambda: query_result(notice()))
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", _candidate_detail)
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: _proposal(partial=True))
+    monkeypatch.setattr(tool, "write_atp_analysis", lambda number, values: pytest.fail("ATP write"))
+    written = []
+    monkeypatch.setattr(tool, "write_ai_analysis", lambda number, values: written.append(number))
+
+    result = tool.execute([], database_path=path)
+
+    assert written == [notice()["通報號"]]
+    assert result["status"] == "partial_success" and result["success"] is False
+    assert result["atp_fault_analysis_skipped"] == written
+    assert result["atp_fault_analysis_written"] == 0
+    assert read_rows(path)[0]["備註"] == "已填寫故障分析"
+
+
+def test_general_failure_keeps_only_confirmed_atp_note(monkeypatch, tmp_path):
+    path = tmp_path / "notice.db"
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices", lambda: query_result(notice()))
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", _candidate_detail)
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: _proposal())
+    monkeypatch.setattr(tool, "write_atp_analysis", lambda number, values: None)
+    def fail_general(number, values):
+        raise MMISClientError("一般分析結果不明")
+    monkeypatch.setattr(tool, "write_ai_analysis", fail_general)
+
+    with pytest.raises(MMISClientError, match="一般分析結果不明"):
+        tool.execute([], database_path=path)
+
+    assert read_rows(path)[0]["備註"] == "已填寫ATP故障分析"
+
+
+def test_append_note_preserves_existing_text_without_duplication(tmp_path):
+    path = tmp_path / "notice.db"
+    run(None, path, query_result(notice()))
+    with sqlite3.connect(path) as connection:
+        connection.execute('UPDATE unclosed_ab_fault_notices SET '
+                           '"Sufficient Data for Fault Analysis" = 1, '
+                           '"Fault Analysis Completed" = 0, "備註" = ?',
+                           ("人工確認\r\n\r\n",))
+    tool.append_analysis_note(notice()["通報號"], "已填寫ATP故障分析", path)
+    tool.append_analysis_note(notice()["通報號"], "已填寫ATP故障分析", path)
+    assert read_rows(path)[0]["備註"] == "人工確認\r\n\r\n已填寫ATP故障分析"
+
+
+def test_missing_atp_ai_suggestion_rejected_before_write(monkeypatch):
+    detail = {
+        "通報號": notice()["通報號"],
+        "是ATP故障": True,
+        "故障分析": {field: field + "內容" for field in tool.WRITE_FIELDS},
+        "ATP故障分析": {field: "" for field in tool.ATP_ANALYSIS_FIELDS},
+        "結案狀態檢查": {
+            "Fault Analysis Completed": False,
+            "ATP Fault Analysis Incomplete": True,
+        },
+    }
+    monkeypatch.setattr(tool.query_fault_notice_full_detail, "execute", lambda args: detail)
+    with pytest.raises(MMISClientError, match="缺少合法"):
+        tool.fetch_ai_analysis(notice()["通報號"])
+
+
+def test_partial_atp_without_ai_suggestion_keeps_general_proposal(monkeypatch):
+    detail = {
+        "通報號": notice()["通報號"],
+        "是ATP故障": True,
+        "故障分析": {field: field + "內容" for field in tool.WRITE_FIELDS},
+        "ATP故障分析": {
+            "故障要因": "人工選項", "故障因子": "", "故障項目": "",
+        },
+        "ATP故障分析_AI建議錯誤": "分類失敗",
+        "結案狀態檢查": {
+            "Fault Analysis Completed": False,
+            "ATP Fault Analysis Incomplete": True,
+        },
+    }
+    monkeypatch.setattr(tool.query_fault_notice_full_detail, "execute", lambda args: detail)
+
+    proposal = tool.fetch_ai_analysis(notice()["通報號"])
+
+    assert proposal.general == {field: field + "內容" for field in tool.WRITE_FIELDS}
+    assert proposal.atp is None
+    assert proposal.atp_partially_filled is True
 
 
 def test_analysis_write_failure_leaves_note_and_completion_flag_unchanged(
@@ -501,9 +620,9 @@ def test_analysis_write_failure_leaves_note_and_completion_flag_unchanged(
         result["結案狀態檢查"]["Fault Analysis Completed"] = False
         return result
     monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
-    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: {
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: tool.AIAnalysisProposal({
         field: field + "內容" for field in tool.WRITE_FIELDS
-    })
+    }))
     def fail_write(number, values):
         raise MMISClientError("故障分析儲存結果不明")
     monkeypatch.setattr(tool, "write_ai_analysis", fail_write)
@@ -528,9 +647,9 @@ def test_second_sync_resets_written_note_when_mmis_analysis_is_complete(
         return result
     monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
     calls = []
-    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: calls.append(number) or {
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: calls.append(number) or tool.AIAnalysisProposal({
         field: field + "內容" for field in tool.WRITE_FIELDS
-    })
+    }))
     monkeypatch.setattr(tool, "write_ai_analysis", lambda number, values: None)
     assert tool.execute([], database_path=path)["fault_analysis_written"] == 1
     completed = True
@@ -558,9 +677,9 @@ def test_stale_written_note_is_cleared_if_mmis_analysis_is_incomplete(
         result["結案狀態檢查"]["Fault Analysis Completed"] = False
         return result
     monkeypatch.setattr(tool, "fetch_fault_notice_detail", detail)
-    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: {
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: tool.AIAnalysisProposal({
         field: field + "內容" for field in tool.WRITE_FIELDS
-    })
+    }))
     def fail_write(number, values):
         raise MMISClientError("儲存結果不明")
     monkeypatch.setattr(tool, "write_ai_analysis", fail_write)

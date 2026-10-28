@@ -35,6 +35,7 @@
 | `UnprocessedFaultNoticeQuery` | 查詢本段未處理通報 | `src/mmis_connector/fault_notices/query.py` |
 | `UnclosedFaultNoticeQuery` | 以固定新竹機務段、A/B 級條件查詢未結案故障通報 | `src/mmis_connector/fault_notices/query.py` |
 | `FaultNoticeAnalysisReader` | 依通報號唯一篩選並讀取故障分析五欄 | `src/mmis_connector/fault_notices/reader.py` |
+| `FaultNoticeATPAnalysisWriter` | 只對 ATP 三欄全空的通報寫入合法分類，要求儲存訊息並回讀三欄 | `src/mmis_connector/fault_notices/atp_writer.py` |
 | `FaultNoticeATPAnalysisReader` | 依通報號確認 ATP 勾選後讀取三欄 | `src/mmis_connector/fault_notices/atp_reader.py` |
 | `FaultNoticeFullDetailReader` | 同一通報明細整合 ATP 標記、段修與 CA 工單、故障分析 | `src/mmis_connector/fault_notices/full_detail.py` |
 | `collect_analysis_materials` | 依段修工作單號分類，重用三類 Reader，整理素材並隔離單筆錯誤 | `src/mmis_connector/fault_notices/analysis_materials.py` |

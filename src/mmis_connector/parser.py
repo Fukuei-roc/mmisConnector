@@ -296,6 +296,26 @@ def parse_labeled_inputs(
     return result
 
 
+def parse_labeled_input_targets(
+    response_text: str, *, field_names: tuple[str, ...], context_name: str
+) -> dict[str, str]:
+    _, soup = _parse_maximo_markup(response_text)
+    result: dict[str, str] = {}
+    for field_name in field_names:
+        targets = {
+            str(label["for"])
+            for label in soup.find_all("label", attrs={"for": True})
+            if label.get_text(" ", strip=True).rstrip(":：").strip() == field_name
+            and soup.find("input", id=str(label["for"])) is not None
+        }
+        if len(targets) != 1:
+            raise MMISClientError(
+                f"{context_name}回應找不到唯一的「{field_name}」輸入框"
+            )
+        result[field_name] = next(iter(targets))
+    return result
+
+
 def parse_fault_notice_basic_info(
     response_text: str, *, expected_notice: str
 ) -> dict[str, str]:

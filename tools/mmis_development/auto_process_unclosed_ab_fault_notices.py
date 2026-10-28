@@ -24,6 +24,10 @@ from mmis_connector.fault_notices.analysis_readiness import AnalysisEvidenceInco
 from mmis_connector.fault_notices.analysis_writer import (
     FaultNoticeAnalysisWriter, WRITE_FIELDS,
 )
+from mmis_connector.fault_notices.atp_reader import ATP_ANALYSIS_FIELDS
+from mmis_connector.fault_notices.atp_writer import (
+    ATPAnalysisAlreadyFilled, FaultNoticeATPAnalysisWriter,
+)
 
 from . import query_fault_notice_full_detail
 
@@ -127,6 +131,15 @@ class SyncState:
     sync_completed: bool = False
     analysis_target: str | None = None
     analysis_written: int = 0
+    atp_analysis_written: int = 0
+    atp_analysis_skipped: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class AIAnalysisProposal:
+    general: dict[str, str]
+    atp: dict[str, str] | None = None
+    atp_partially_filled: bool = False
 
 
 def fetch_unclosed_fault_notices() -> dict[str, Any]:
@@ -441,7 +454,7 @@ def pending_analysis_numbers(database_path: Path) -> list[str]:
         )]
 
 
-def fetch_ai_analysis(notice_number: str) -> dict[str, str]:
+def fetch_ai_analysis(notice_number: str) -> AIAnalysisProposal:
     detail = query_fault_notice_full_detail.execute([notice_number, "--ai-analysis"])
     if detail.get("通報號") != notice_number:
         raise MMISClientError("AI 故障分析通報號不符")
@@ -453,7 +466,29 @@ def fetch_ai_analysis(notice_number: str) -> dict[str, str]:
         for field in WRITE_FIELDS
     ):
         raise MMISClientError("AI 故障分析缺少三個非空欄位")
-    return {field: analysis[field] for field in WRITE_FIELDS}
+    general = {field: analysis[field] for field in WRITE_FIELDS}
+    atp_incomplete = detail.get("結案狀態檢查", {}).get("ATP Fault Analysis Incomplete")
+    if type(atp_incomplete) is not bool:
+        raise MMISClientError("AI 故障分析缺少 ATP 完成狀態")
+    if not atp_incomplete:
+        return AIAnalysisProposal(general)
+    current_atp = detail.get("ATP故障分析")
+    if detail.get("是ATP故障") is not True or not isinstance(current_atp, dict):
+        raise MMISClientError("ATP 故障分析原始資料無效")
+    if any(not isinstance(current_atp.get(field), str) for field in ATP_ANALYSIS_FIELDS):
+        raise MMISClientError("ATP 故障分析原始欄位格式無效")
+    if any(current_atp[field].strip() for field in ATP_ANALYSIS_FIELDS):
+        return AIAnalysisProposal(general, atp_partially_filled=True)
+    suggestion = detail.get("ATP故障分析_AI建議")
+    if not isinstance(suggestion, dict) or any(
+        not isinstance(suggestion.get(field), str) or not suggestion[field].strip()
+        for field in ATP_ANALYSIS_FIELDS
+    ):
+        raise MMISClientError("ATP 故障分析缺少合法的三欄 AI 建議")
+    return AIAnalysisProposal(
+        general,
+        {field: suggestion[field] for field in ATP_ANALYSIS_FIELDS},
+    )
 
 
 def write_ai_analysis(notice_number: str, values: dict[str, str]) -> None:
@@ -462,18 +497,38 @@ def write_ai_analysis(notice_number: str, values: dict[str, str]) -> None:
     FaultNoticeAnalysisWriter(client).run(notice_number, values)
 
 
-def mark_analysis_written(notice_number: str, database_path: Path) -> None:
+def write_atp_analysis(notice_number: str, values: dict[str, str]) -> None:
+    client = MMISSession(MMISConfig.from_env())
+    client.login()
+    FaultNoticeATPAnalysisWriter(client).run(notice_number, values)
+
+
+def append_analysis_note(notice_number: str, note: str, database_path: Path) -> None:
     with sqlite3.connect(database_path) as connection:
         connection.execute("BEGIN IMMEDIATE")
         _check_schema(connection)
+        stored = connection.execute(
+            f'SELECT "備註" FROM {TABLE_NAME} WHERE "通報號" = ? '
+            'AND "Sufficient Data for Fault Analysis" = 1 '
+            'AND "Fault Analysis Completed" = 0',
+            (notice_number,),
+        ).fetchone()
+        if stored is None:
+            raise MMISClientError("分析已寫入 MMIS，但本機備註更新條件不符")
+        existing = stored[0] or ""
+        lines = existing.splitlines()
+        updated = existing
+        if note not in lines:
+            separator = "" if not existing or existing.endswith(("\n", "\r")) else "\n"
+            updated = existing + separator + note
         cursor = connection.execute(
             f'UPDATE {TABLE_NAME} SET "備註" = ? WHERE "通報號" = ? '
             'AND "Sufficient Data for Fault Analysis" = 1 '
-            'AND "Fault Analysis Completed" = 0 AND "備註" IS NULL',
-            ("填寫故障分析完成", notice_number),
+            'AND "Fault Analysis Completed" = 0',
+            (updated, notice_number),
         )
         if cursor.rowcount != 1:
-            raise MMISClientError("故障分析已寫入 MMIS，但本機備註更新條件不符")
+            raise MMISClientError("分析已寫入 MMIS，但本機備註更新條件不符")
 
 
 def move_to_waiting(
@@ -629,17 +684,32 @@ def execute(
         result["fault_analysis_candidates"] = len(pending)
         for notice_number in pending:
             state.analysis_target = notice_number
-            values = fetch_ai_analysis(notice_number)
-            write_ai_analysis(notice_number, values)
-            mark_analysis_written(notice_number, path)
+            proposal = fetch_ai_analysis(notice_number)
+            if proposal.atp_partially_filled:
+                state.atp_analysis_skipped.append(notice_number)
+            elif proposal.atp is not None:
+                try:
+                    write_atp_analysis(notice_number, proposal.atp)
+                except ATPAnalysisAlreadyFilled:
+                    state.atp_analysis_skipped.append(notice_number)
+                else:
+                    append_analysis_note(notice_number, "已填寫ATP故障分析", path)
+                    state.atp_analysis_written += 1
+            write_ai_analysis(notice_number, proposal.general)
+            append_analysis_note(notice_number, "已填寫故障分析", path)
             state.analysis_written += 1
             state.analysis_target = None
     result["fault_analysis_written"] = state.analysis_written
+    result["atp_fault_analysis_written"] = state.atp_analysis_written
+    result["atp_fault_analysis_skipped"] = state.atp_analysis_skipped
+    if state.atp_analysis_skipped:
+        result["success"] = False
+        result["status"] = "partial_success"
     if export_requested:
         result["operation"] = "sync_and_export_xlsx"
         if not result["success"]:
             result["xlsx_export"] = {
-                "status": "skipped", "reason": "SQLite 同步尚有未完成的資料充分性檢查",
+                "status": "skipped", "reason": "同步或 ATP 分析尚有未完成項目",
             }
             return result
         state.sync_completed = True
@@ -686,6 +756,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "records_loaded": state.records_loaded,
             "fault_analysis_current_notice": state.analysis_target,
             "fault_analysis_written": state.analysis_written,
+            "atp_fault_analysis_written": state.atp_analysis_written,
+            "atp_fault_analysis_skipped": state.atp_analysis_skipped,
         }
         if state.export_requested:
             result["operation"] = "sync_and_export_xlsx"

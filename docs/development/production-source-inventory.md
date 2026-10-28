@@ -21,6 +21,7 @@
 | `fault_notices/analysis_materials.py` | B：正式共用整合元件 | Auto-link 不使用；完整通報 development tool 呼叫 `collect_analysis_materials` | 保留；重用三類工單 Reader，負責分類、欄位擷取、重試、單筆失敗隔離與去重查詢 |
 | `fault_notices/ai_analysis.py` | B：正式共用分析元件 | Auto-link 不使用；完整通報 development tool 僅在 `--ai-analysis` 時呼叫 | 保留；讀取獨立 Prompt、整理原始 JSON 副本、呼叫 OpenAI、驗證三欄並合併結果 |
 | `fault_notices/analysis_writer.py` | B：正式共用寫入元件 | Auto-link 不使用；A/B 通報同步 development tool 呼叫 | 保留；沿用唯一通報定位與 Maximo event，儲存後重新查詢三欄確認 |
+| `fault_notices/atp_writer.py` | B：正式共用寫入元件 | Auto-link 不使用；A/B 通報同步 development tool 呼叫 | 保留；僅對 ATP 三欄全空通報依錄製事件填寫，儲存後重新查詢三欄確認 |
 | `fault_notices/atp_ai_analysis.py` | B：正式共用分析元件 | Auto-link 不使用；完整通報 development tool 僅在 `--ai-analysis` 且 ATP 標記為布林 true 時呼叫 | 保留；載入完整 ATP 選項樹、排除 MMIS 原分類、呼叫 OpenAI 並驗證完整路徑 |
 | `fault_notices/linked_work_orders.py` | B：正式共用 Reader | Auto-link 不使用；獨立與整合查詢重用 | 保留；封裝段檢修工單分頁與去重 |
 | `fault_notices/repair_work_orders.py` | B：正式共用 Reader | Auto-link 不使用；獨立與整合查詢重用 | 保留；封裝 CA 查修工單分頁、篩選與去重 |
