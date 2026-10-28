@@ -128,6 +128,7 @@ def test_status_checks_write_matching_export_notes_only(monkeypatch, tmp_path, c
         ("depot-approval", (None, 1, 0, 1, 0, 0), None, "等候段修工單簽核中"),
         ("pending-unprocessed", (None, 0, 0, 1, 0, 0), "原備註", "未處理"),
         ("checked-pending-unprocessed", (0, 0, 0, 1, 0, 0), "原備註", "未處理"),
+        ("depot-closed-analysis-incomplete", (0, 0, 1, 0, 0, 0), "原備註", "未處理（段修工單結案）"),
         ("not-pending-unprocessed", (None, 0, 0, 0, 0, 0), "原備註", "原備註"),
         ("closable", (None, 1, 1, 0, 0, 0), None, "可結案"),
         ("unprocessed", (0, 0, 0, 0, 0, 0), None, "未處理"),
