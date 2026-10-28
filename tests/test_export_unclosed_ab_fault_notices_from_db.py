@@ -119,29 +119,29 @@ def test_sorts_all_rows_by_level_date_and_vehicle(monkeypatch, tmp_path, capsys)
     assert hashlib.sha256(database.read_bytes()).digest() == before
 
 
-def test_status_checks_write_matching_export_notes_only(monkeypatch, tmp_path, capsys) -> None:
+def test_export_reads_notes_from_database_without_deriving_status_notes(monkeypatch, tmp_path, capsys) -> None:
     database = tmp_path / "unclosed_ab_fault_notices.db"
     output = tmp_path / "xlsx"
     output.mkdir()
     cases = [
-        ("depot-open", (None, 1, 0, 0, 0, 0), "原備註", "段修工單未處理完成"),
-        ("depot-approval", (None, 1, 0, 1, 0, 0), None, "等候段修工單簽核中"),
-        ("atp-analysis-incomplete", (1, 1, 0, 1, 0, 1), "原備註", "未處理（含ATP故障分析）"),
-        ("atp-analysis-unchecked", (None, 1, 0, 1, 0, 1), "原備註", "原備註"),
-        ("pending-unprocessed", (None, 0, 0, 1, 0, 0), "原備註", "未處理"),
-        ("checked-pending-unprocessed", (0, 0, 0, 1, 0, 0), "原備註", "未處理"),
-        ("depot-closed-analysis-incomplete", (0, 0, 1, 0, 0, 0), "原備註", "未處理（段修工單結案）"),
-        ("not-pending-unprocessed", (None, 0, 0, 0, 0, 0), "原備註", "原備註"),
-        ("closable", (None, 1, 1, 0, 0, 0), None, "可結案"),
-        ("unprocessed", (0, 0, 0, 0, 0, 0), None, "未處理"),
-        ("different-sufficient", (1, 1, 0, 0, 0, 0), "=SUM(1,2)", "=SUM(1,2)"),
-        ("different-ca", (None, 1, 0, 0, 1, 0), None, None),
-        ("different-atp", (None, 1, 0, 0, 0, 1), None, None),
-        ("unchecked", (None, None, None, None, None, None), "原備註", "原備註"),
+        ("depot-open", (None, 1, 0, 0, 0, 0), "原備註"),
+        ("depot-approval", (None, 1, 0, 1, 0, 0), None),
+        ("atp-analysis-incomplete", (1, 1, 0, 1, 0, 1), "原備註"),
+        ("atp-analysis-unchecked", (None, 1, 0, 1, 0, 1), "原備註"),
+        ("pending-unprocessed", (None, 0, 0, 1, 0, 0), "原備註"),
+        ("checked-pending-unprocessed", (0, 0, 0, 1, 0, 0), "原備註"),
+        ("depot-closed-analysis-incomplete", (0, 0, 1, 0, 0, 0), "原備註"),
+        ("not-pending-unprocessed", (None, 0, 0, 0, 0, 0), "原備註"),
+        ("closable", (None, 1, 1, 0, 0, 0), None),
+        ("unprocessed", (0, 0, 0, 0, 0, 0), None),
+        ("different-sufficient", (1, 1, 0, 0, 0, 0), "=SUM(1,2)"),
+        ("different-ca", (None, 1, 0, 0, 1, 0), None),
+        ("different-atp", (None, 1, 0, 0, 0, 1), None),
+        ("unchecked", (None, None, None, None, None, None), "原備註"),
     ]
     with sqlite3.connect(database) as connection:
         connection.execute(snapshot.CREATE_TABLE_SQL)
-        for index, (number, status, note, _) in enumerate(cases):
+        for index, (number, status, note) in enumerate(cases):
             connection.execute(
                 snapshot.INSERT_SQL,
                 ("123", f"EMU{index}", f"2026/10/{21 - index:02d}",
@@ -174,8 +174,8 @@ def test_status_checks_write_matching_export_notes_only(monkeypatch, tmp_path, c
             for row_number in range(2, sheet.max_row + 1)
         }
         assert all(cell.fill.patternType is None for row in sheet.iter_rows() for cell in row)
-        for number, _, _, expected_note in cases:
-            assert exported[number][1].value == expected_note
+        for number, _, note in cases:
+            assert exported[number][1].value == note
         assert exported["different-sufficient"][1].data_type == "s"
     finally:
         workbook.close()

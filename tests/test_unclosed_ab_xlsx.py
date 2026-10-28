@@ -77,6 +77,10 @@ def test_no_flag_syncs_without_xlsx(monkeypatch, tmp_path, capsys) -> None:
     assert "xlsx_export" not in summary
     assert database.is_file()
     assert list(output.iterdir()) == []
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            'SELECT "備註" FROM unclosed_ab_fault_notices'
+        ).fetchone()[0] == "段修工單未處理完成"
 
 
 def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, capsys) -> None:
@@ -124,7 +128,7 @@ def test_existing_sqlite_is_replaced_before_export(monkeypatch, tmp_path, capsys
     workbook.close()
 
 
-def test_export_resets_previous_analysis_note(monkeypatch, tmp_path, capsys) -> None:
+def test_export_replaces_unmarked_note_with_database_status_note(monkeypatch, tmp_path, capsys) -> None:
     database, _ = setup_offline(monkeypatch, tmp_path, source("one"))
     tool.replace_rows(tool.prepare_rows(result(source("one"))), database, tool.SyncState())
     with sqlite3.connect(database) as connection:
@@ -140,7 +144,7 @@ def test_export_resets_previous_analysis_note(monkeypatch, tmp_path, capsys) -> 
     with sqlite3.connect(database) as connection:
         assert connection.execute(
             'SELECT "備註" FROM unclosed_ab_fault_notices'
-        ).fetchone()[0] is None
+        ).fetchone()[0] == "段修工單未處理完成"
 
 
 @pytest.mark.parametrize("value,expected", [(1, True), (0, False), (None, None)])

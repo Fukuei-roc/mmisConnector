@@ -53,7 +53,7 @@ def evaluate_depot_work_order_status(work_orders: Sequence[dict[str, Any]]) -> d
         ),
         "Depot Maintenance Work Orders Pending Approval": any(
             status in {"簽核中", "核簽中"} for status in statuses
-        ),
+        ) and all(status in {"簽核中", "核簽中", "工單結案"} for status in statuses),
     }
 
 

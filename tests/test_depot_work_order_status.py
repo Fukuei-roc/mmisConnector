@@ -28,12 +28,13 @@ def test_atp_fault_analysis_incomplete(atp_fault, analysis, incomplete):
     (["工單結案", "簽核中"], False, True),
     (["簽核中", "簽核中"], False, True),
     (["工單結案", "執行中"], False, False),
-    (["執行中", "簽核中"], False, True),
-    (["工單結案", "執行中", "簽核中"], False, True),
+    (["執行中", "簽核中"], False, False),
+    (["工單結案", "執行中", "簽核中"], False, False),
+    (["核簽中", "完工待回報"], False, False),
     (["執行中", "執行中"], False, False),
     ([], False, False),
     ([None, "工單結案"], False, False),
-    ([None, "簽核中"], False, True),
+    ([None, "簽核中"], False, False),
     (["", "工單結案"], False, False),
     (["已派工", "退回", "取消", "其他系統狀態"], False, False),
 ])
@@ -55,7 +56,7 @@ def test_missing_work_order_status_is_not_closed_or_pending():
     orders = [{"狀態": "工單結案"}, {"工作單狀態": "簽核中", "狀態": "處理完成"}]
     assert tool.evaluate_depot_work_order_status(orders) == {
         "All Depot Maintenance Work Orders Closed": False,
-        "Depot Maintenance Work Orders Pending Approval": True,
+        "Depot Maintenance Work Orders Pending Approval": False,
     }
 
 

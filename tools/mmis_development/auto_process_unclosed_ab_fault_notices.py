@@ -58,6 +58,32 @@ RESERVED_FIELDS = (
 )
 DETAIL_CHECK_FIELDS = RESERVED_FIELDS[:-1]
 DETAIL_CHECK_SELECT = ", ".join(f'"{field}"' for field in DETAIL_CHECK_FIELDS)
+STATUS_RULES = {
+    (None, 1, 0, 0, 0, 0): "段修工單未處理完成",
+    (None, 1, 0, 1, 0, 0): "等候段修工單簽核中",
+    (1, 1, 0, 1, 0, 1): "未處理（含ATP故障分析）",
+    (None, 0, 0, 1, 0, 0): "未處理",
+    (0, 0, 0, 1, 0, 0): "未處理",
+    (0, 0, 1, 0, 0, 0): "未處理（段修工單結案）",
+    (None, 1, 1, 0, 0, 0): "可結案",
+    (0, 0, 0, 0, 0, 0): "未處理",
+}
+STATUS_NOTES = tuple(dict.fromkeys(STATUS_RULES.values()))
+ANALYSIS_NOTES = frozenset({"已填寫ATP故障分析", "已填寫故障分析"})
+
+
+def _has_analysis_note(note: str | None) -> bool:
+    return bool(note and ANALYSIS_NOTES.intersection(note.splitlines()))
+
+
+def _status_note(checks: tuple[int | None, ...], existing: str | None) -> str | None:
+    matched = STATUS_RULES.get(checks)
+    if _has_analysis_note(existing):
+        retained = [line for line in existing.splitlines() if line not in STATUS_NOTES]
+        return "\n".join(([matched] if matched is not None else []) + retained)
+    if matched is not None:
+        return matched
+    return None if existing in STATUS_NOTES else existing
 COLUMNS = (
     ("車次", "TEXT", 0, 0),
     ("車組/車號", "TEXT", 0, 0),
@@ -336,8 +362,23 @@ def replace_rows(
         if exists is None:
             connection.execute(CREATE_TABLE_SQL)
         _check_schema(connection)
+        preserved_notes = {
+            number: note for number, note in connection.execute(
+                f'SELECT "通報號", "備註" FROM {TABLE_NAME} WHERE "備註" IS NOT NULL'
+            ) if _has_analysis_note(note)
+        }
         connection.execute(f"DELETE FROM {TABLE_NAME}")
         connection.executemany(INSERT_SQL, rows)
+        if connection.execute(
+            f'SELECT 1 FROM {TABLE_NAME} WHERE "備註" IS NOT NULL LIMIT 1'
+        ).fetchone():
+            raise MMISClientError("故障通報預留欄位備註未重置")
+        number_index = BASIC_FIELDS.index("通報號")
+        connection.executemany(
+            f'UPDATE {TABLE_NAME} SET "備註" = ? WHERE "通報號" = ?',
+            ((preserved_notes[row[number_index]], row[number_index])
+             for row in rows if row[number_index] in preserved_notes),
+        )
         saved = connection.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
         if saved != len(rows):
             raise MMISClientError("故障通報寫入筆數不符")
@@ -346,10 +387,6 @@ def replace_rows(
             f"SELECT 1 FROM {TABLE_NAME} WHERE {reserved_not_null} LIMIT 1"
         ).fetchone():
             raise MMISClientError("故障通報預留欄位未保持 NULL")
-        if connection.execute(
-            f'SELECT 1 FROM {TABLE_NAME} WHERE "備註" IS NOT NULL LIMIT 1'
-        ).fetchone():
-            raise MMISClientError("故障通報預留欄位備註未重置")
         connection.commit()
         state.old_data_unchanged = False
         return saved
@@ -380,9 +417,13 @@ def update_detail_checks(
         transaction_started = True
         state.detail_transaction_started = True
         _check_schema(connection)
+        existing = connection.execute(
+            f'SELECT "備註" FROM {TABLE_NAME} WHERE "通報號" = ?',
+            (notice_number,),
+        ).fetchone()
         cursor = connection.execute(
-            f'UPDATE {TABLE_NAME} SET {assignments} WHERE "通報號" = ?',
-            (*checks, notice_number),
+            f'UPDATE {TABLE_NAME} SET {assignments}, "備註" = ? WHERE "通報號" = ?',
+            (*checks, _status_note(checks, existing[0] if existing else None), notice_number),
         )
         if cursor.rowcount != 1:
             raise MMISClientError("完整通報檢查值未更新唯一通報")
@@ -416,10 +457,15 @@ def update_analysis_readiness(
         transaction_started = True
         state.detail_transaction_started = True
         _check_schema(connection)
+        stored = connection.execute(
+            f'SELECT {DETAIL_CHECK_SELECT}, "備註" FROM {TABLE_NAME} WHERE "通報號" = ?',
+            (notice_number,),
+        ).fetchone()
         cursor = connection.execute(
-            f'UPDATE {TABLE_NAME} SET "Sufficient Data for Fault Analysis" = ? '
+            f'UPDATE {TABLE_NAME} SET "Sufficient Data for Fault Analysis" = ?, "備註" = ? '
             'WHERE "通報號" = ? AND "Fault Analysis Completed" = 0',
-            (readiness, notice_number),
+            (readiness, _status_note((readiness, *stored[1:6]), stored[6])
+             if stored else None, notice_number),
         )
         if cursor.rowcount != 1:
             raise MMISClientError("資料充分性未更新唯一且故障分析未完成的通報")
@@ -446,11 +492,15 @@ def update_analysis_readiness(
 def pending_analysis_numbers(database_path: Path) -> list[str]:
     with sqlite3.connect(database_path) as connection:
         _check_schema(connection)
-        return [row[0] for row in connection.execute(
-            f'SELECT "通報號" FROM {TABLE_NAME} '
+        candidates = connection.execute(
+            f'SELECT "通報號", "備註" FROM {TABLE_NAME} '
             'WHERE "Sufficient Data for Fault Analysis" = 1 '
-            'AND "Fault Analysis Completed" = 0 AND "備註" IS NULL '
+            'AND "Fault Analysis Completed" = 0 '
             'ORDER BY rowid'
+        )
+        allowed_notes = set(STATUS_NOTES) | {"已填寫ATP故障分析"}
+        return [number for number, note in candidates if note is None or (
+            note and all(line in allowed_notes for line in note.splitlines())
         )]
 
 

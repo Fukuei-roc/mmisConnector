@@ -97,6 +97,99 @@ def test_full_replace_resets_reserved_columns(monkeypatch, tmp_path) -> None:
     assert all(row[field] is None for row in rows for field in tool.RESERVED_FIELDS)
 
 
+def test_full_replace_preserves_existing_analysis_notes_for_matching_notice(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "notice.db"
+    run(monkeypatch, path, query_result(notice(), notice("other")))
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "備註" = ? WHERE "通報號" = ?',
+            ("已填寫ATP故障分析\n已填寫故障分析", notice()["通報號"]),
+        )
+    run(monkeypatch, path, query_result(notice(), notice("new")))
+    rows = {row["通報號"]: row for row in read_rows(path)}
+    assert rows[notice()["通報號"]]["備註"] == "已填寫ATP故障分析\n已填寫故障分析"
+    assert rows["new"]["備註"] is None
+    assert "other" not in rows
+
+
+@pytest.mark.parametrize("checks,expected", [
+    ((None, 1, 0, 0, 0, 0), "段修工單未處理完成"),
+    ((None, 1, 0, 1, 0, 0), "等候段修工單簽核中"),
+    ((1, 1, 0, 1, 0, 1), "未處理（含ATP故障分析）"),
+    ((None, 0, 0, 1, 0, 0), "未處理"),
+    ((0, 0, 0, 1, 0, 0), "未處理"),
+    ((0, 0, 1, 0, 0, 0), "未處理（段修工單結案）"),
+    ((None, 1, 1, 0, 0, 0), "可結案"),
+    ((0, 0, 0, 0, 0, 0), "未處理"),
+    ((None, 1, 0, 1, 0, 1), None),
+])
+def test_detail_checks_store_status_note_in_database(monkeypatch, tmp_path, checks, expected) -> None:
+    path = tmp_path / "notice.db"
+    run(monkeypatch, path, query_result(notice()))
+    tool.update_detail_checks(notice()["通報號"], checks, path, tool.SyncState())
+    assert read_rows(path)[0]["備註"] == expected
+
+
+def test_readiness_updates_status_note_without_overwriting_completion_marker(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "notice.db"
+    run(monkeypatch, path, query_result(notice()))
+    number = notice()["通報號"]
+    state = tool.SyncState()
+    tool.update_detail_checks(number, (None, 0, 0, 1, 0, 1), path, state)
+    tool.update_analysis_readiness(number, 1, path, state)
+    assert read_rows(path)[0]["備註"] is None
+    assert tool.pending_analysis_numbers(path) == [number]
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "備註" = ? WHERE "通報號" = ?',
+            ("已填寫ATP故障分析", number),
+        )
+    tool.update_detail_checks(number, (1, 0, 0, 1, 0, 1), path, state)
+    assert read_rows(path)[0]["備註"] == "已填寫ATP故障分析"
+    assert tool.pending_analysis_numbers(path) == [number]
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "備註" = ? WHERE "通報號" = ?',
+            ("人工確認\n已填寫ATP故障分析", number),
+        )
+    assert tool.pending_analysis_numbers(path) == []
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "備註" = ? WHERE "通報號" = ?',
+            ("已填寫故障分析", number),
+        )
+    assert tool.pending_analysis_numbers(path) == []
+
+
+def test_readiness_clears_status_note_when_final_checks_no_longer_match(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "notice.db"
+    number = notice()["通報號"]
+    run(monkeypatch, path, query_result(notice()))
+    state = tool.SyncState()
+    tool.update_detail_checks(number, (None, 0, 0, 1, 0, 0), path, state)
+    assert read_rows(path)[0]["備註"] == "未處理"
+    tool.update_analysis_readiness(number, 1, path, state)
+    assert read_rows(path)[0]["備註"] is None
+    assert tool.pending_analysis_numbers(path) == [number]
+
+
+def test_status_note_replaces_stale_status_and_keeps_completion_markers(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "notice.db"
+    number = notice()["通報號"]
+    run(monkeypatch, path, query_result(notice()))
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "備註" = ? WHERE "通報號" = ?',
+            ("未處理\n人工確認\n已填寫ATP故障分析\n已填寫故障分析", number),
+        )
+    checks = (None, 1, 0, 0, 0, 0)
+    tool.update_detail_checks(number, checks, path, tool.SyncState())
+    expected = "段修工單未處理完成\n人工確認\n已填寫ATP故障分析\n已填寫故障分析"
+    assert read_rows(path)[0]["備註"] == expected
+    tool.update_detail_checks(number, checks, path, tool.SyncState())
+    assert read_rows(path)[0]["備註"] == expected
+
+
 def test_empty_success_clears_old_rows(monkeypatch, tmp_path) -> None:
     path = tmp_path / "notice.db"
     run(monkeypatch, path, query_result(notice()))
@@ -545,16 +638,25 @@ def test_general_failure_keeps_only_confirmed_atp_note(monkeypatch, tmp_path):
     path = tmp_path / "notice.db"
     monkeypatch.setattr(tool, "fetch_unclosed_fault_notices", lambda: query_result(notice()))
     monkeypatch.setattr(tool, "fetch_fault_notice_detail", _candidate_detail)
-    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: _proposal())
-    monkeypatch.setattr(tool, "write_atp_analysis", lambda number, values: None)
+    proposals = iter((_proposal(), tool.AIAnalysisProposal(_proposal().general)))
+    monkeypatch.setattr(tool, "fetch_ai_analysis", lambda number: next(proposals))
+    atp_writes = []
+    monkeypatch.setattr(tool, "write_atp_analysis", lambda number, values: atp_writes.append(number))
+    general_writes = []
     def fail_general(number, values):
-        raise MMISClientError("一般分析結果不明")
+        general_writes.append(number)
+        if len(general_writes) == 1:
+            raise MMISClientError("一般分析結果不明")
     monkeypatch.setattr(tool, "write_ai_analysis", fail_general)
 
     with pytest.raises(MMISClientError, match="一般分析結果不明"):
         tool.execute([], database_path=path)
 
     assert read_rows(path)[0]["備註"] == "已填寫ATP故障分析"
+    assert tool.execute([], database_path=path)["fault_analysis_written"] == 1
+    assert atp_writes == [notice()["通報號"]]
+    assert general_writes == [notice()["通報號"], notice()["通報號"]]
+    assert read_rows(path)[0]["備註"] == "已填寫ATP故障分析\n已填寫故障分析"
 
 
 def test_append_note_preserves_existing_text_without_duplication(tmp_path):
@@ -634,7 +736,7 @@ def test_analysis_write_failure_leaves_note_and_completion_flag_unchanged(
     assert row["Fault Analysis Completed"] == 0
 
 
-def test_second_sync_resets_written_note_when_mmis_analysis_is_complete(
+def test_second_sync_preserves_written_note_when_mmis_analysis_is_complete(
     monkeypatch, tmp_path,
 ) -> None:
     path = tmp_path / "notice.db"
@@ -656,7 +758,7 @@ def test_second_sync_resets_written_note_when_mmis_analysis_is_complete(
     assert tool.execute([], database_path=path)["fault_analysis_written"] == 0
     assert calls == ["incomplete"]
     row = read_rows(path)[0]
-    assert row["備註"] is None
+    assert row["備註"] == "已填寫故障分析"
     assert row["Fault Analysis Completed"] == 1
 
 
