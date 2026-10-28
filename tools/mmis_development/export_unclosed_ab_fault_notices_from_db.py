@@ -23,7 +23,7 @@ COLUMN_WIDTHS = {
     "故障現象": 70,
     "狀態": 10.6,
     "通報號": 14.9,
-    "備註": 40,
+    "備註": 28.9,
 }
 COLUMN_NAMES = tuple(column[0] for column in snapshot.COLUMNS)
 

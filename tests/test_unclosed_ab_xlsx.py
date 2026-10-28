@@ -106,6 +106,7 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     assert sheet.cell(2, 8).fill.patternType is None
     assert sheet.cell(2, 5).value is True
     assert sheet.cell(2, 9).value == "段修工單未處理完成"
+    assert sheet.column_dimensions["I"].width == 28.9
     assert sheet.row_dimensions[1].height == sheet.row_dimensions[2].height == 15.5
     for cell in sheet[1]:
         assert cell.font.name == xlsx.FONT_NAME and cell.font.sz == 12
@@ -115,6 +116,31 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
         assert cell.font.name == xlsx.FONT_NAME and cell.font.sz == 12
         assert not cell.font.bold and cell.alignment.horizontal == "left"
         assert cell.alignment.vertical == "top"
+    workbook.close()
+
+
+@pytest.mark.parametrize(
+    "note,expected_height",
+    [
+        (None, 15.5),
+        ("第一行", 15.5),
+        ("第一行\n第二行", 31),
+        ("第一行\n第二行\n第三行", 46.5),
+        ("第一行\n第二行\n第三行\n第四行", 62),
+        ("第一行\n第二行\n第三行\n第四行\n第五行", 77.5),
+    ],
+)
+def test_export_note_lines_set_row_height(monkeypatch, tmp_path, note, expected_height) -> None:
+    database, _ = setup_offline(monkeypatch, tmp_path, source("one"))
+    tool.replace_rows(tool.prepare_rows(result(source("one"))), database, tool.SyncState())
+    with sqlite3.connect(database) as connection:
+        connection.execute('UPDATE unclosed_ab_fault_notices SET "備註" = ?', (note,))
+
+    exported = offline.execute([], database_path=database)
+    workbook = load_workbook(exported["xlsx_export"]["output_file"])
+    assert workbook.active.cell(2, 9).value == note
+    assert workbook.active.row_dimensions[2].height == expected_height
+    assert workbook.active.row_dimensions[1].height == 15.5
     workbook.close()
 
 

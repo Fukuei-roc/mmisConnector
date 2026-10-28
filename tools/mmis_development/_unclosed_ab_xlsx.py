@@ -129,6 +129,7 @@ def build_workbook(
         sheet.column_dimensions[get_column_letter(index)].width = (
             column_widths[name] if column_widths is not None and name in column_widths else width
         )
+    note_index = columns.index("備註") + 1 if "備註" in columns else None
     for row_number in range(2, sheet.max_row + 1):
         height_lines = 1
         for index, name in enumerate(columns, start=1):
@@ -140,9 +141,12 @@ def build_workbook(
                     horizontal="left", vertical=vertical_alignment, wrap_text=True
                 )
             height_lines = max(height_lines, lines)
-        sheet.row_dimensions[row_number].height = (
-            row_height if row_height is not None else min(409.5, 18 * height_lines + 6)
-        )
+        if row_height is not None:
+            note = sheet.cell(row_number, note_index).value if note_index is not None else None
+            note_lines = str(note).count("\n") + 1 if note else 1
+            sheet.row_dimensions[row_number].height = min(409.5, row_height * note_lines)
+        else:
+            sheet.row_dimensions[row_number].height = min(409.5, 18 * height_lines + 6)
     return workbook
 
 

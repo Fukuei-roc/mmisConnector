@@ -75,7 +75,7 @@ def test_exports_existing_database_without_sync(monkeypatch, tmp_path, capsys) -
             for cell in row
         )
         assert [sheet.column_dimensions[column].width for column in "ABCDEFGHI"] == [
-            6.5, 11.8, 14.5, 10.6, 10.6, 70, 10.6, 14.9, 40,
+            6.5, 11.8, 14.5, 10.6, 10.6, 70, 10.6, 14.9, 28.9,
         ]
     finally:
         workbook.close()
