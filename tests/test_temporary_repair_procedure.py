@@ -7,13 +7,14 @@ from types import SimpleNamespace
 import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
-from mmis_connector.parser import _parse_maximo_markup
+from mmis_connector.parser import _parse_maximo_markup, parse_maximo_tab_target
 from mmis_connector.temporary_repair.reader import (
     TemporaryRepairProcedureReader,
     _basic_labeled_value,
     _note_record,
     _note_table_summary,
     parse_temporary_repair_basic_info,
+    parse_temporary_repair_approval_page,
     parse_temporary_repair_work_order,
     parse_temporary_repair_linked_fault_notices,
     parse_temporary_repair_test_run_page,
@@ -50,6 +51,63 @@ TEST_RUN_RECORDING = Path(
     r"\2026-10-07_query-whether-temporary-repair-work-order-includes-test-run-order"
     r"\raw.har"
 )
+APPROVAL_RECORDING = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-30_query-temporary-repair-work-order-pending-approvers"
+    r"\raw.har"
+)
+
+
+def test_recorded_approval_page_reads_current_approvers() -> None:
+    if not APPROVAL_RECORDING.exists():
+        pytest.skip("核簽記錄錄製 HAR 不在本機")
+    entries = json.loads(APPROVAL_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    names, page = parse_temporary_repair_approval_page(
+        entries[355]["response"]["content"]["text"]
+    )
+    assert set(names) == {"何建龍", "蔡林正", "張春然", "蕭昇鴻"}
+    assert (page.start, page.end, page.total, page.next_page_target) == (
+        1, 5, 5, None
+    )
+
+
+def test_signing_work_order_queries_approval_tab(monkeypatch) -> None:
+    if not APPROVAL_RECORDING.exists():
+        pytest.skip("核簽記錄錄製 HAR 不在本機")
+    entries = json.loads(APPROVAL_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    detail = entries[344]["response"]["content"]["text"]
+    approval = entries[355]["response"]["content"]["text"]
+    basic_info = parse_temporary_repair_basic_info(detail)
+    assert basic_info["工作單狀態"] == "核簽中"
+    state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
+    reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
+    calls = []
+    monkeypatch.setattr(
+        reader.events, "load_app_with_response",
+        lambda **kwargs: (state, ""),
+    )
+    monkeypatch.setattr(reader, "_filter_work_order", lambda **kwargs: ("", 1, 4))
+    monkeypatch.setattr(
+        reader, "_exact_filtered_row",
+        lambda *args, **kwargs: (SimpleNamespace(prefix="work"), {"車組/車號": basic_info["車組/車號"]}),
+    )
+
+    def post(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return detail
+        if len(calls) == 2:
+            return approval
+        raise RuntimeError("report tab clicked")
+
+    monkeypatch.setattr(reader.events, "post", post)
+    with pytest.raises(RuntimeError, match="report tab clicked"):
+        reader.run("115-C1-45326")
+
+    assert [call["xhr_seq"] for call in calls] == [4, 5, 6]
+    assert calls[1]["target_id"] == parse_maximo_tab_target(
+        detail, title="核簽記錄"
+    )
 
 
 def test_recorded_test_run_page_reads_requested_six_fields() -> None:
@@ -416,7 +474,9 @@ def test_recorded_flow_reads_two_rows_and_only_requested_fields(monkeypatch) -> 
     assert result["車組/車號"] == "ED813"
     assert result["檢修級別"] == "C2"
     assert result["已勾稽故障通報"] == {"count": 0, "records": []}
-    assert list(result).index("工作單狀態") < list(result).index("已勾稽故障通報")
+    assert result["待簽核人"] == []
+    assert list(result).index("工作單狀態") < list(result).index("待簽核人")
+    assert list(result).index("待簽核人") < list(result).index("已勾稽故障通報")
     assert list(result).index("已勾稽故障通報") < list(result).index("維修程序概況")
     assert list(result)[-1] == "試車報告"
     assert result["試車報告"] == {"count": 0, "records": []}

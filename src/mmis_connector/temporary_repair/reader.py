@@ -41,6 +41,7 @@ DATE_FIELDS = {"檢修日期", "完工日期"}
 TEST_RUN_FIELDS = (
     "工作單", "檢修內容", "車組/車號", "檢修廠段", "檢修單位", "工作單狀態",
 )
+APPROVAL_HEADERS = {"姓名", "核簽結果"}
 
 
 def _note_table_summary(response: str) -> str:
@@ -186,6 +187,32 @@ def parse_temporary_repair_test_run_page(
     return reports, page
 
 
+def parse_temporary_repair_approval_page(
+    response: str,
+) -> tuple[list[str], FaultNoticePageInfo]:
+    schema, rows = parse_maximo_table(
+        response, required_headers=APPROVAL_HEADERS, table_summary="核簽流程"
+    )
+    if schema is None:
+        raise MMISClientError("核簽流程缺少必要欄位")
+    page = parse_maximo_page_info(
+        response, table_prefix=schema.prefix, context_name="核簽流程"
+    )
+    if page.total == 0:
+        if rows or page.start != 0 or page.end != 0 or page.next_page_target:
+            raise MMISClientError("核簽流程空頁與表格資料不一致")
+    elif page.end - page.start + 1 != len(rows):
+        raise MMISClientError("核簽流程分頁範圍與資料不一致")
+    names = []
+    for row in rows:
+        if row["核簽結果"] == "目前進行者":
+            name = str(row["姓名"]).strip()
+            if not name:
+                raise MMISClientError("核簽流程目前進行者缺少姓名")
+            names.append(name)
+    return names, page
+
+
 class TemporaryRepairProcedureReader:
     """Read all maintenance note rows for one exact temporary repair work order."""
 
@@ -302,6 +329,50 @@ class TemporaryRepairProcedureReader:
         xhr_seq += 1
         basic_info = parse_temporary_repair_basic_info(detail)
         linked_fault_notices = parse_temporary_repair_linked_fault_notices(detail)
+        pending_approvers: list[str] = []
+        if basic_info["工作單狀態"] == "核簽中":
+            approval_tab = parse_maximo_tab_target(detail, title="核簽記錄")
+            approval_response = self.events.post(
+                state=self.client.state or state,
+                current_focus=approval_tab,
+                event_type="click",
+                target_id=approval_tab,
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+            expected_start = 1
+            expected_total: int | None = None
+            while True:
+                names, approval_page = parse_temporary_repair_approval_page(
+                    approval_response
+                )
+                if expected_total is None:
+                    expected_total = approval_page.total
+                if approval_page.total != expected_total:
+                    raise MMISClientError("核簽流程分頁總筆數不一致")
+                if approval_page.total == 0:
+                    break
+                if approval_page.start != expected_start:
+                    raise MMISClientError("核簽流程分頁起點不連續")
+                pending_approvers.extend(names)
+                if approval_page.end == approval_page.total:
+                    if approval_page.next_page_target is not None:
+                        raise MMISClientError("核簽流程末頁仍有下一頁")
+                    break
+                if approval_page.next_page_target is None:
+                    raise MMISClientError("核簽流程尚未讀完但找不到下一頁")
+                expected_start = approval_page.end + 1
+                approval_response = self.events.post(
+                    state=self.client.state or state,
+                    current_focus=approval_page.next_page_target,
+                    event_type="click",
+                    target_id=approval_page.next_page_target,
+                    value="",
+                    xhr_seq=xhr_seq,
+                )
+                xhr_seq += 1
+            pending_approvers = sorted(set(pending_approvers))
         vehicle = basic_info["車組/車號"]
         if vehicle != row["車組/車號"]:
             raise MMISClientError("工單明細車組/車號與查詢結果不相符")
@@ -447,6 +518,7 @@ class TemporaryRepairProcedureReader:
             "success": True,
             "工作單": detail_work_order,
             **basic_info,
+            "待簽核人": pending_approvers,
             "已勾稽故障通報": linked_fault_notices,
             "維修程序概況": {
                 "count": len(records),
