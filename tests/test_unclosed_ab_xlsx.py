@@ -95,6 +95,7 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     assert exported.parent == output
     with sqlite3.connect(database) as connection:
         assert connection.execute('SELECT "通報號" FROM unclosed_ab_fault_notices').fetchone()[0] == "new"
+        assert connection.execute('SELECT "ATP故障" FROM unclosed_ab_fault_notices').fetchone()[0] == 1
     workbook = load_workbook(exported)
     assert workbook.sheetnames == [xlsx.SHEET_NAME]
     sheet = workbook.active
@@ -104,7 +105,8 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     assert sheet.max_column == 9 and sheet.max_row == 2
     assert sheet.cell(2, 8).value == "new"
     assert sheet.cell(2, 8).fill.patternType is None
-    assert sheet.cell(2, 5).value is True
+    assert sheet.cell(2, 5).value == "Y"
+    assert sheet.cell(2, 5).data_type == "s"
     assert sheet.cell(2, 9).value == "段修工單未處理完成"
     assert sheet.column_dimensions["I"].width == 28.9
     assert sheet.row_dimensions[1].height == sheet.row_dimensions[2].height == 15.5
@@ -173,8 +175,12 @@ def test_export_replaces_unmarked_note_with_database_status_note(monkeypatch, tm
         ).fetchone()[0] == "段修工單未處理完成"
 
 
-@pytest.mark.parametrize("value,expected", [(1, True), (0, False), (None, None)])
-def test_boolean_and_null_from_sqlite(monkeypatch, tmp_path, value, expected) -> None:
+@pytest.mark.parametrize("value,expected_atp,expected_boolean", [
+    (1, "Y", True), (0, "N", False), (None, None, None),
+])
+def test_boolean_and_null_from_sqlite(
+    monkeypatch, tmp_path, value, expected_atp, expected_boolean,
+) -> None:
     database, output = setup_offline(monkeypatch, tmp_path, source("one"))
     tool.replace_rows(tool.prepare_rows(result(source("one"))), database, tool.SyncState())
     with sqlite3.connect(database) as connection:
@@ -185,10 +191,14 @@ def test_boolean_and_null_from_sqlite(monkeypatch, tmp_path, value, expected) ->
     exported = xlsx.export_xlsx(database, tool.TABLE_NAME, columns(), bool_columns(),
                                 output_directory=output)
     workbook = load_workbook(exported["output_file"])
-    assert workbook.active.cell(2, 5).value is expected
-    assert workbook.active.cell(2, 10).value is expected
+    assert workbook.active.cell(2, 5).value == expected_atp
+    if expected_atp is not None:
+        assert workbook.active.cell(2, 5).data_type == "s"
+    assert workbook.active.cell(2, 10).value is expected_boolean
     assert workbook.active.cell(2, 15).value is None
     workbook.close()
+    with sqlite3.connect(database) as connection:
+        assert connection.execute('SELECT "ATP故障" FROM unclosed_ab_fault_notices').fetchone()[0] == value
 
 
 def test_text_formula_safety_width_and_wrapping(monkeypatch, tmp_path) -> None:

@@ -113,6 +113,8 @@ def build_workbook(
                 if type(value) is not int or value not in (0, 1):
                     raise XlsxExportError(f"SQLite 布林欄位 {name} 含有無效值")
                 value = bool(value)
+                if name == "ATP故障":
+                    value = "Y" if value else "N"
             cell = sheet.cell(row_number, index, value)
             if isinstance(value, str):
                 cell.data_type = "s"  # Preserve =, +, -, @ as literal text.

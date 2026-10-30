@@ -66,7 +66,8 @@ def test_exports_existing_database_without_sync(monkeypatch, tmp_path, capsys) -
             "故障現象", "狀態", "通報號", "備註",
         )
         assert sheet.cell(2, 8).value == "1151021-01"
-        assert sheet.cell(2, 5).value is True
+        assert sheet.cell(2, 5).value == "Y"
+        assert sheet.cell(2, 5).data_type == "s"
         assert sheet.cell(2, 9).value is None
         assert all(sheet.row_dimensions[row].height == 15.5 for row in (1, 2))
         assert all(
