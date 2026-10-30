@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -37,11 +38,16 @@ BASIC_FIELDS = (
     "車組/車號", "檢修級別", "故障現象", "原因說明", "備註",
     "檢修日期", "完工日期", "工作單狀態",
 )
-DATE_FIELDS = {"檢修日期", "完工日期"}
+DATE_FIELDS = {"檢修日期", "完工日期", "試車日期"}
 TEST_RUN_FIELDS = (
     "工作單", "檢修內容", "車組/車號", "檢修廠段", "檢修單位", "工作單狀態",
 )
 APPROVAL_HEADERS = {"姓名", "核簽結果"}
+TEST_RUN_WORK_ORDER_RE = re.compile(r"\d+-C[123]-\d+-\d{3}")
+
+
+def _is_test_run_work_order(number: str) -> bool:
+    return TEST_RUN_WORK_ORDER_RE.fullmatch(number) is not None
 
 
 def _note_table_summary(response: str) -> str:
@@ -129,6 +135,30 @@ def parse_temporary_repair_work_order(response: str) -> str:
     """Read the parent work order from the report tab response."""
     _, soup = _parse_maximo_markup(response)
     return _basic_labeled_value(soup, "工作單")
+
+
+def parse_test_run_work_order_status(response: str, *, number: str) -> str:
+    _, soup = _parse_maximo_markup(response)
+    statuses: list[str] = []
+    for label in soup.find_all("label", attrs={"for": True}):
+        if label.get_text(" ", strip=True).rstrip(":：").strip() != "工作單":
+            continue
+        control = soup.find(id=str(label["for"]))
+        if control is None or str(control.get("value", "")) != number:
+            continue
+        for section in control.parents:
+            if section.name != "tr":
+                continue
+            labels = [
+                node.get_text(" ", strip=True).rstrip(":：").strip()
+                for node in section.find_all("label", attrs={"for": True})
+            ]
+            if labels.count("工作單") == labels.count("工作單狀態") == 1:
+                statuses.append(_basic_labeled_value(section, "工作單狀態"))
+                break
+    if not statuses or len(set(statuses)) != 1:
+        raise MMISClientError("試車報告找不到唯一的工作單狀態")
+    return statuses[0]
 
 
 def parse_temporary_repair_linked_fault_notices(
@@ -220,6 +250,110 @@ class TemporaryRepairProcedureReader:
         self.client = client
         self.events = MaximoEventClient(client)
 
+    def _pending_approvers(
+        self, *, detail: str, state: PageState, xhr_seq: int
+    ) -> tuple[list[str], int]:
+        approval_tab = parse_maximo_tab_target(detail, title="核簽記錄")
+        approval_response = self.events.post(
+            state=self.client.state or state,
+            current_focus=approval_tab,
+            event_type="click",
+            target_id=approval_tab,
+            value="",
+            xhr_seq=xhr_seq,
+        )
+        xhr_seq += 1
+        pending_approvers: list[str] = []
+        expected_start = 1
+        expected_total: int | None = None
+        while True:
+            names, approval_page = parse_temporary_repair_approval_page(
+                approval_response
+            )
+            if expected_total is None:
+                expected_total = approval_page.total
+            if approval_page.total != expected_total:
+                raise MMISClientError("核簽流程分頁總筆數不一致")
+            if approval_page.total == 0:
+                break
+            if approval_page.start != expected_start:
+                raise MMISClientError("核簽流程分頁起點不連續")
+            pending_approvers.extend(names)
+            if approval_page.end == approval_page.total:
+                if approval_page.next_page_target is not None:
+                    raise MMISClientError("核簽流程末頁仍有下一頁")
+                break
+            if approval_page.next_page_target is None:
+                raise MMISClientError("核簽流程尚未讀完但找不到下一頁")
+            expected_start = approval_page.end + 1
+            approval_response = self.events.post(
+                state=self.client.state or state,
+                current_focus=approval_page.next_page_target,
+                event_type="click",
+                target_id=approval_page.next_page_target,
+                value="",
+                xhr_seq=xhr_seq,
+            )
+            xhr_seq += 1
+        return sorted(set(pending_approvers)), xhr_seq
+
+    def _test_run_detail(
+        self, *, detail: str, number: str, row: dict[str, Any],
+        state: PageState, xhr_seq: int,
+    ) -> dict[str, Any]:
+        _, soup = _parse_maximo_markup(detail)
+        fields = (
+            "工作單", "母工作單編號", "車組/車號", "試車日期", "車次", "填表人(姓名)",
+        )
+        basic = {field: _basic_labeled_value(soup, field) for field in fields}
+        if basic["工作單"] != number:
+            raise MMISClientError("試車報告工作單與查詢號碼不相符")
+        if basic["車組/車號"] != row["車組/車號"]:
+            raise MMISClientError("試車報告車組/車號與查詢結果不相符")
+
+        result_tab = parse_maximo_tab_target(detail, title="試車結果")
+        related_tab = parse_maximo_tab_target(detail, title="關聯工單")
+        result_response = self.events.post(
+            state=self.client.state or state,
+            current_focus=result_tab,
+            event_type="click",
+            target_id=result_tab,
+            value="",
+            xhr_seq=xhr_seq,
+        )
+        xhr_seq += 1
+        _, result_soup = _parse_maximo_markup(result_response)
+        result = _basic_labeled_value(result_soup, "試車結果")
+        related_response = self.events.post(
+            state=self.client.state or state,
+            current_focus=related_tab,
+            event_type="click",
+            target_id=related_tab,
+            value="",
+            xhr_seq=xhr_seq,
+        )
+        xhr_seq += 1
+        status = parse_test_run_work_order_status(related_response, number=number)
+        approvers: list[str] = []
+        if status == "核簽中":
+            approvers, xhr_seq = self._pending_approvers(
+                detail=detail, state=state, xhr_seq=xhr_seq
+            )
+        return {
+            "query_name": QUERY_NAME,
+            "queried_work_order_number": number,
+            "success": True,
+            "工作單": basic["工作單"],
+            "母工作單編號": basic["母工作單編號"],
+            "工作單狀態": status,
+            "待簽核人": approvers,
+            "車組/車號": basic["車組/車號"],
+            "試車日期": basic["試車日期"],
+            "車次": basic["車次"],
+            "填表人(姓名)": basic["填表人(姓名)"],
+            "試車結果": result,
+        }
+
     def _filter_work_order(
         self, *, state: PageState, response: str, number: str, xhr_seq: int
     ) -> tuple[str, int, int]:
@@ -242,7 +376,7 @@ class TemporaryRepairProcedureReader:
             current_focus=work_input,
             event_type="setvalue",
             target_id=level_input,
-            value="C1,C2,C3",
+            value="TR" if _is_test_run_work_order(number) else "C1,C2,C3",
             xhr_seq=xhr_seq + 1,
         )
         filtered = self.events.post(
@@ -271,6 +405,8 @@ class TemporaryRepairProcedureReader:
             if rows or page.start != 0 or page.end != 0 or page.next_page_target:
                 raise MMISClientError("臨時檢修工單零筆結果與表格資料不一致")
             return None
+        if _is_test_run_work_order(number) and page.total > 1:
+            raise MMISClientError("查找到多筆試車報告")
         if len(rows) != 1 or rows[0]["工作單"] != number:
             raise MMISClientError("工作單查詢結果不是唯一且完全相符的一筆")
         if page.total != 1 or page.start != 1 or page.end != 1 or page.next_page_target:
@@ -327,52 +463,17 @@ class TemporaryRepairProcedureReader:
             xhr_seq=xhr_seq,
         )
         xhr_seq += 1
+        if _is_test_run_work_order(number):
+            return self._test_run_detail(
+                detail=detail, number=number, row=row, state=state, xhr_seq=xhr_seq
+            )
         basic_info = parse_temporary_repair_basic_info(detail)
         linked_fault_notices = parse_temporary_repair_linked_fault_notices(detail)
         pending_approvers: list[str] = []
         if basic_info["工作單狀態"] == "核簽中":
-            approval_tab = parse_maximo_tab_target(detail, title="核簽記錄")
-            approval_response = self.events.post(
-                state=self.client.state or state,
-                current_focus=approval_tab,
-                event_type="click",
-                target_id=approval_tab,
-                value="",
-                xhr_seq=xhr_seq,
+            pending_approvers, xhr_seq = self._pending_approvers(
+                detail=detail, state=state, xhr_seq=xhr_seq
             )
-            xhr_seq += 1
-            expected_start = 1
-            expected_total: int | None = None
-            while True:
-                names, approval_page = parse_temporary_repair_approval_page(
-                    approval_response
-                )
-                if expected_total is None:
-                    expected_total = approval_page.total
-                if approval_page.total != expected_total:
-                    raise MMISClientError("核簽流程分頁總筆數不一致")
-                if approval_page.total == 0:
-                    break
-                if approval_page.start != expected_start:
-                    raise MMISClientError("核簽流程分頁起點不連續")
-                pending_approvers.extend(names)
-                if approval_page.end == approval_page.total:
-                    if approval_page.next_page_target is not None:
-                        raise MMISClientError("核簽流程末頁仍有下一頁")
-                    break
-                if approval_page.next_page_target is None:
-                    raise MMISClientError("核簽流程尚未讀完但找不到下一頁")
-                expected_start = approval_page.end + 1
-                approval_response = self.events.post(
-                    state=self.client.state or state,
-                    current_focus=approval_page.next_page_target,
-                    event_type="click",
-                    target_id=approval_page.next_page_target,
-                    value="",
-                    xhr_seq=xhr_seq,
-                )
-                xhr_seq += 1
-            pending_approvers = sorted(set(pending_approvers))
         vehicle = basic_info["車組/車號"]
         if vehicle != row["車組/車號"]:
             raise MMISClientError("工單明細車組/車號與查詢結果不相符")

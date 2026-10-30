@@ -56,6 +56,60 @@ APPROVAL_RECORDING = Path(
     r"\2026-10-30_query-temporary-repair-work-order-pending-approvers"
     r"\raw.har"
 )
+TR_DETAIL_RECORDING = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-10-30_query-test-run-report-details"
+    r"\raw.har"
+)
+
+
+def test_recorded_tr_detail_has_distinct_json_contract(monkeypatch) -> None:
+    if not TR_DETAIL_RECORDING.exists():
+        pytest.skip("試車報告明細錄製 HAR 不在本機")
+    entries = json.loads(TR_DETAIL_RECORDING.read_text(encoding="utf-8"))["log"]["entries"]
+    responses = iter(
+        entries[index]["response"]["content"]["text"]
+        for index in (344, 349, 353, 357)
+    )
+    state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
+    reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
+    calls = []
+    monkeypatch.setattr(reader.events, "load_app_with_response", lambda **kwargs: (state, ""))
+    monkeypatch.setattr(reader, "_filter_work_order", lambda **kwargs: ("", 1, 4))
+    monkeypatch.setattr(
+        reader, "_exact_filtered_row",
+        lambda *args, **kwargs: (
+            SimpleNamespace(prefix="work"), {"車組/車號": "EMU928"}
+        ),
+    )
+
+    def post(**kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr(reader.events, "post", post)
+    result = reader.run("115-C2-46115-001")
+
+    assert list(result) == [
+        "query_name", "queried_work_order_number", "success", "工作單",
+        "母工作單編號", "工作單狀態", "待簽核人", "車組/車號",
+        "試車日期", "車次", "填表人(姓名)", "試車結果",
+    ]
+    assert result == {
+        "query_name": "查詢臨時檢修工單明細",
+        "queried_work_order_number": "115-C2-46115-001",
+        "success": True,
+        "工作單": "115-C2-46115-001",
+        "母工作單編號": "115-C2-46115",
+        "工作單狀態": "核簽中",
+        "待簽核人": ["張春然", "蕭昇鴻"],
+        "車組/車號": "EMU928",
+        "試車日期": "2026/10/30",
+        "車次": "8253",
+        "填表人(姓名)": "莊富貴",
+        "試車結果": "良好",
+    }
+    assert [call["xhr_seq"] for call in calls] == [4, 5, 6, 7]
 
 
 def test_recorded_approval_page_reads_current_approvers() -> None:
@@ -228,6 +282,57 @@ def _recorded_query_calls(
     with pytest.raises(RuntimeError, match="detail clicked"):
         reader.run(number)
     return calls
+
+
+@pytest.mark.parametrize(
+    ("number", "level"),
+    [
+        ("115-C2-46115-001", "TR"),
+        ("115-C2-46115-002", "TR"),
+        ("115-C1-46055", "C1,C2,C3"),
+        ("115-C1-45326", "C1,C2,C3"),
+    ],
+)
+def test_filter_level_matches_work_order_type(monkeypatch, number, level) -> None:
+    state = PageState("session", 3, "csrf", "zz_cmwo", "https://example.test/app")
+    reader = TemporaryRepairProcedureReader(SimpleNamespace(state=state))
+    calls = []
+    monkeypatch.setattr(
+        "mmis_connector.temporary_repair.reader.parse_maximo_table_schema",
+        lambda *args, **kwargs: SimpleNamespace(prefix="work", headers={1: "工作單", 2: "檢修級別"}),
+    )
+    monkeypatch.setattr(reader.events, "post", lambda **kwargs: calls.append(kwargs) or "")
+
+    reader._filter_work_order(state=state, response="", number=number, xhr_seq=1)
+
+    assert [(call["event_type"], call["value"]) for call in calls] == [
+        ("setvalue", number), ("setvalue", level), ("filterrows", ""),
+    ]
+
+
+@pytest.mark.parametrize("second_number", ["115-C2-46115-001", "115-C2-46115-002"])
+def test_multiple_test_run_work_orders_report_specific_error(second_number) -> None:
+    number = "115-C2-46115-001"
+    response = (
+        '<table summary="工作單" id="work_tbod-tbd">'
+        '<span class="tCount" id="work-lb3">1 - 2/2</span>'
+        '<span id="work_ttrow_[C:1]_ttitle-lb">工作單</span>'
+        '<span id="work_ttrow_[C:2]_ttitle-lb">檢修級別</span>'
+        '<span id="work_ttrow_[C:3]_ttitle-lb">車組/車號</span>'
+        + "".join(
+            f'<tr id="work_tbod_tdrow-tr[R:{index}]">'
+            f'<td id="work_tdrow_[C:1]-c[R:{index}]">'
+            f'{number if index == 0 else second_number}</td>'
+            f'<td id="work_tdrow_[C:2]-c[R:{index}]">TR</td>'
+            f'<td id="work_tdrow_[C:3]-c[R:{index}]">EMU928</td>'
+            "</tr>"
+            for index in range(2)
+        )
+        + "</table>"
+    )
+
+    with pytest.raises(MMISClientError, match="^查找到多筆試車報告$"):
+        TemporaryRepairProcedureReader._exact_filtered_row(response, number=number)
 
 
 def test_recorded_query_uses_default_list_before_all_records(monkeypatch) -> None:
