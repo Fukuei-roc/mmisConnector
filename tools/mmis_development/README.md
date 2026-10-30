@@ -69,11 +69,14 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 仍有失敗列時結束碼為 1，可直接重跑接續。請勿同時在 Excel 中編輯該檔案。
 
 自動處理 A/B 級未結案故障通報先執行第一階段 snapshot。它在
-`data/unclosed_ab_fault_notices.db` 建立 15 欄的 `unclosed_ab_fault_notices` 資料表，
+`data/unclosed_ab_fault_notices.db` 建立 16 欄的 `unclosed_ab_fault_notices` 資料表，
 以 `通報號` 為唯一鍵。僅寫入車次、車組/車號、發生日期、事故等級、ATP故障、故障現象、
 狀態及通報號八個基本欄位；此時六個結案狀態檢查欄位及備註均為 SQLite `NULL`。
 每次查詢完整成功後以 transaction 完整覆蓋舊資料，包含重新清空預留欄位；查詢或寫入
-失敗則保留舊資料。
+失敗則保留舊資料。既有 15 欄資料表在下次同步時，會於同一筆交易中新增位於「備註」
+右方的「待簽核工單」欄。待簽核狀態為 true 時，從段修工單挑出狀態精確為「核簽中」
+的工作單號，依來源順序以 JSON 陣列文字儲存；沒有符合工單時為 SQLite `NULL`。
+Excel 匯出仍維持原本九欄。
 
 工具另在 `data/a_level_fault_notices_awaiting_closure.db` 保存「A-Level Fault Notices
 Awaiting Closure」，資料表 `a_level_fault_notices_awaiting_closure` 只有 `通報號`（唯一鍵）

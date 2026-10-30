@@ -99,7 +99,7 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     assert workbook.sheetnames == [xlsx.SHEET_NAME]
     sheet = workbook.active
     assert tuple(cell.value for cell in sheet[1]) == tuple(
-        name for name in columns() if name not in tool.DETAIL_CHECK_FIELDS
+            name for name in columns() if name not in (*tool.DETAIL_CHECK_FIELDS, tool.PENDING_WORK_ORDERS_FIELD)
     )
     assert sheet.max_column == 9 and sheet.max_row == 2
     assert sheet.cell(2, 8).value == "new"
@@ -254,7 +254,7 @@ def test_first_filename_has_no_suffix_and_empty_snapshot_has_header(monkeypatch,
     workbook = load_workbook(exported)
     assert workbook.active.max_row == 1
     assert tuple(cell.value for cell in workbook.active[1]) == tuple(
-        name for name in columns() if name not in tool.DETAIL_CHECK_FIELDS
+            name for name in columns() if name not in (*tool.DETAIL_CHECK_FIELDS, tool.PENDING_WORK_ORDERS_FIELD)
     )
     workbook.close()
 

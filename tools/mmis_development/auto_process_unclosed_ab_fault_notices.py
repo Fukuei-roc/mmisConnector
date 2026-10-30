@@ -57,6 +57,10 @@ RESERVED_FIELDS = (
     "備註",
 )
 DETAIL_CHECK_FIELDS = RESERVED_FIELDS[:-1]
+PENDING_WORK_ORDERS_FIELD = "待簽核工單"
+PENDING_APPROVAL_CHECK_INDEX = DETAIL_CHECK_FIELDS.index(
+    "Depot Maintenance Work Orders Pending Approval"
+)
 DETAIL_CHECK_SELECT = ", ".join(f'"{field}"' for field in DETAIL_CHECK_FIELDS)
 STATUS_RULES = {
     (None, 1, 0, 0, 0, 0): "段修工單未處理完成",
@@ -95,6 +99,7 @@ COLUMNS = (
     ("通報號", "TEXT", 1, 1),
     *((name, "INTEGER", 0, 0) for name in RESERVED_FIELDS[:-1]),
     ("備註", "TEXT", 0, 0),
+    (PENDING_WORK_ORDERS_FIELD, "TEXT", 0, 0),
 )
 CREATE_TABLE_SQL = '''
 CREATE TABLE unclosed_ab_fault_notices (
@@ -112,7 +117,8 @@ CREATE TABLE unclosed_ab_fault_notices (
     "Depot Maintenance Work Orders Pending Approval" INTEGER DEFAULT NULL,
     "CA Repair Work Orders Not Closed" INTEGER DEFAULT NULL,
     "ATP Fault Analysis Incomplete" INTEGER DEFAULT NULL,
-    "備註" TEXT DEFAULT NULL
+    "備註" TEXT DEFAULT NULL,
+    "待簽核工單" TEXT DEFAULT NULL
 )
 '''
 INSERT_SQL = '''
@@ -219,6 +225,28 @@ def prepare_detail_checks(
     return tuple(values)
 
 
+def pending_work_orders(
+    detail: dict[str, Any], checks: tuple[int | None, ...],
+) -> str | None:
+    if checks[PENDING_APPROVAL_CHECK_INDEX] != 1:
+        return None
+    orders = detail.get("段修工單")
+    if not isinstance(orders, list):
+        raise MMISClientError("完整通報查詢缺少段修工單清單")
+    numbers: list[str] = []
+    for order in orders:
+        if not isinstance(order, dict):
+            raise MMISClientError("段修工單資料型別錯誤")
+        if order.get("工作單狀態") != "核簽中":
+            continue
+        number = order.get("工作單")
+        if not isinstance(number, str) or not number.strip():
+            raise MMISClientError("核簽中段修工單缺少工作單號")
+        if number.strip() not in numbers:
+            numbers.append(number.strip())
+    return json.dumps(numbers, ensure_ascii=False) if numbers else None
+
+
 def prepare_rows(result: dict[str, Any]) -> list[tuple[Any, ...]]:
     """Accept only a complete result from the fixed unclosed A/B query."""
     if not isinstance(result, dict) or result.get("success") is not True:
@@ -321,11 +349,14 @@ def current_added_at() -> str:
     return datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
 
 
-def _check_schema(connection: sqlite3.Connection) -> None:
+def _check_schema(
+    connection: sqlite3.Connection,
+    expected_columns: tuple[tuple[str, str, int, int], ...] = COLUMNS,
+) -> None:
     actual = connection.execute(f"PRAGMA table_info({TABLE_NAME})").fetchall()
-    if len(actual) != len(COLUMNS):
+    if len(actual) != len(expected_columns):
         raise MMISClientError("既有故障通報資料表 schema 不符")
-    for column, expected in zip(actual, COLUMNS, strict=True):
+    for column, expected in zip(actual, expected_columns, strict=True):
         _, name, kind, not_null, default, primary_key = column
         if ((name, kind.upper(), not_null, primary_key) != expected
                 or (default is not None and str(default).upper() != "NULL")):
@@ -361,6 +392,13 @@ def replace_rows(
         ).fetchone()
         if exists is None:
             connection.execute(CREATE_TABLE_SQL)
+        elif len(connection.execute(
+            f"PRAGMA table_info({TABLE_NAME})"
+        ).fetchall()) == len(COLUMNS) - 1:
+            _check_schema(connection, COLUMNS[:-1])
+            connection.execute(
+                f'ALTER TABLE {TABLE_NAME} ADD COLUMN "{PENDING_WORK_ORDERS_FIELD}" TEXT DEFAULT NULL'
+            )
         _check_schema(connection)
         preserved_notes = {
             number: note for number, note in connection.execute(
@@ -407,6 +445,7 @@ def update_detail_checks(
     checks: tuple[int | None, ...],
     database_path: Path,
     state: SyncState,
+    pending_orders: str | None = None,
 ) -> None:
     assignments = ", ".join(f'"{field}" = ?' for field in DETAIL_CHECK_FIELDS)
     selected = ", ".join(f'"{field}"' for field in DETAIL_CHECK_FIELDS)
@@ -422,16 +461,19 @@ def update_detail_checks(
             (notice_number,),
         ).fetchone()
         cursor = connection.execute(
-            f'UPDATE {TABLE_NAME} SET {assignments}, "備註" = ? WHERE "通報號" = ?',
-            (*checks, _status_note(checks, existing[0] if existing else None), notice_number),
+            f'UPDATE {TABLE_NAME} SET {assignments}, "備註" = ?, '
+            f'"{PENDING_WORK_ORDERS_FIELD}" = ? WHERE "通報號" = ?',
+            (*checks, _status_note(checks, existing[0] if existing else None),
+             pending_orders, notice_number),
         )
         if cursor.rowcount != 1:
             raise MMISClientError("完整通報檢查值未更新唯一通報")
         stored = connection.execute(
-            f'SELECT {selected} FROM {TABLE_NAME} WHERE "通報號" = ?',
+            f'SELECT {selected}, "{PENDING_WORK_ORDERS_FIELD}" FROM {TABLE_NAME} '
+            'WHERE "通報號" = ?',
             (notice_number,),
         ).fetchone()
-        if stored != checks:
+        if stored != (*checks, pending_orders):
             raise MMISClientError("完整通報檢查值寫入驗證失敗")
         connection.commit()
         state.detail_updated = True
@@ -681,7 +723,10 @@ def execute(
         checks = prepare_detail_checks(
             detail, notice_number, require_readiness=check_analysis_readiness
         )
-        update_detail_checks(notice_number, checks, path, state)
+        update_detail_checks(
+            notice_number, checks, path, state,
+            pending_orders=pending_work_orders(detail, checks),
+        )
         state.details_processed += 1
         if not check_analysis_readiness and checks[1] == 0:
             state.readiness_queries += 1

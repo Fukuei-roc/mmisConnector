@@ -64,10 +64,11 @@ def test_success_schema_summary_and_reserved_nulls(monkeypatch, tmp_path) -> Non
     assert result == {"records_saved": 1}
     rows = read_rows(path)
     assert len(rows) == 1
-    assert tuple(rows[0].keys()) == (*tool.BASIC_FIELDS, *tool.RESERVED_FIELDS)
+    assert tuple(rows[0].keys()) == (*tool.BASIC_FIELDS, *tool.RESERVED_FIELDS, tool.PENDING_WORK_ORDERS_FIELD)
     assert rows[0]["ATP故障"] == 1
     assert rows[0]["故障現象"] == "原始現象"
     assert all(rows[0][field] is None for field in tool.RESERVED_FIELDS)
+    assert rows[0][tool.PENDING_WORK_ORDERS_FIELD] is None
     with sqlite3.connect(path) as connection:
         columns = connection.execute("PRAGMA table_info(unclosed_ab_fault_notices)").fetchall()
     assert [(row[1], row[2], row[3], row[5]) for row in columns] == list(tool.COLUMNS)
@@ -363,6 +364,85 @@ def detail_result(number: str, readiness: bool | None = None) -> dict:
             readiness, True, False, False, True, False,
         ), strict=True)),
     }
+
+
+def test_existing_database_adds_pending_order_column(tmp_path) -> None:
+    path = tmp_path / "notices.db"
+    legacy_sql = tool.CREATE_TABLE_SQL.replace(
+        ',\n    "待簽核工單" TEXT DEFAULT NULL', ''
+    )
+    with sqlite3.connect(path) as connection:
+        connection.execute(legacy_sql)
+        connection.execute(tool.INSERT_SQL, tool.prepare_rows(query_result(notice()))[0])
+    tool.replace_rows(tool.prepare_rows(query_result(notice())), path, tool.SyncState())
+    row = read_rows(path)[0]
+    assert row.keys()[-2:] == ["備註", "待簽核工單"]
+    assert row["待簽核工單"] is None
+
+
+def test_failed_snapshot_rolls_back_column_migration(tmp_path) -> None:
+    path = tmp_path / "notices.db"
+    legacy_sql = tool.CREATE_TABLE_SQL.replace(
+        ',\n    "待簽核工單" TEXT DEFAULT NULL', ''
+    )
+    original = tool.prepare_rows(query_result(notice()))[0]
+    with sqlite3.connect(path) as connection:
+        connection.execute(legacy_sql)
+        connection.execute(tool.INSERT_SQL, original)
+    state = tool.SyncState()
+    with pytest.raises(sqlite3.IntegrityError):
+        tool.replace_rows([original, original], path, state)
+    with sqlite3.connect(path) as connection:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(unclosed_ab_fault_notices)")]
+        rows = connection.execute('SELECT "通報號" FROM unclosed_ab_fault_notices').fetchall()
+    assert columns[-1] == "備註"
+    assert rows == [("1150910-14",)]
+    assert state.rolled_back
+
+
+def test_pending_orders_store_json_and_reset_on_next_snapshot(tmp_path) -> None:
+    path = tmp_path / "notices.db"
+    number = notice()["通報號"]
+    tool.replace_rows(tool.prepare_rows(query_result(notice())), path, tool.SyncState())
+    detail = detail_result(number)
+    detail["結案狀態檢查"]["Depot Maintenance Work Orders Pending Approval"] = True
+    detail["段修工單"] = [
+        {"工作單狀態": "核簽中", "工作單": "115-1A-79072"},
+        {"工作單狀態": "已結案", "工作單": "115-1A-79073"},
+        {"工作單狀態": "核簽中", "工作單": "115-C1-12345"},
+        {"工作單狀態": "核簽中", "工作單": "115-1A-79072"},
+    ]
+    checks = tool.prepare_detail_checks(detail, number, require_readiness=False)
+    tool.update_detail_checks(number, checks, path, tool.SyncState(),
+                              pending_orders=tool.pending_work_orders(detail, checks))
+    assert json.loads(read_rows(path)[0]["待簽核工單"]) == ["115-1A-79072", "115-C1-12345"]
+    tool.replace_rows(tool.prepare_rows(query_result(notice())), path, tool.SyncState())
+    assert read_rows(path)[0]["待簽核工單"] is None
+
+
+def test_pending_orders_only_exact_status_and_missing_number() -> None:
+    detail = {"段修工單": [{"工作單狀態": "簽核中", "工作單": "115-1A-1"}]}
+    assert tool.pending_work_orders(detail, (None, 1, 0, 1, 0, 0)) is None
+    detail["段修工單"].append({"工作單狀態": "核簽中", "工作單": " "})
+    with pytest.raises(MMISClientError, match="缺少工作單號"):
+        tool.pending_work_orders(detail, (None, 1, 0, 1, 0, 0))
+
+
+def test_workflow_writes_pending_orders_from_full_detail(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "notices.db"
+    number = notice()["通報號"]
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices", lambda: query_result(notice()))
+
+    def fake_detail(value, *, check_analysis_readiness):
+        detail = detail_result(value)
+        detail["結案狀態檢查"]["Depot Maintenance Work Orders Pending Approval"] = True
+        detail["段修工單"] = [{"工作單狀態": "核簽中", "工作單": "115-1A-79072"}]
+        return detail
+
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", fake_detail)
+    summary = tool.execute([], database_path=path)
+    assert summary["success"] is True
+    assert json.loads(read_rows(path)[0]["待簽核工單"]) == ["115-1A-79072"]
 
 
 def closable_detail(number: str) -> dict:

@@ -46,7 +46,9 @@ def execute(
         snapshot.TABLE_NAME,
         COLUMN_NAMES,
         frozenset({"ATP故障", *snapshot.DETAIL_CHECK_FIELDS}),
-        excluded_columns=frozenset(snapshot.DETAIL_CHECK_FIELDS),
+        excluded_columns=frozenset((
+            *snapshot.DETAIL_CHECK_FIELDS, snapshot.PENDING_WORK_ORDERS_FIELD,
+        )),
         row_height=15.5,
         vertical_alignment="top",
         column_widths=COLUMN_WIDTHS,
