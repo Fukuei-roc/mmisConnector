@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
+from mmis_connector.approval import read_pending_approvers
 from mmis_connector.daily_inspection.reader import (
     DailyInspectionInspectionRecordReader,
     parse_daily_inspection_basic_info,
@@ -55,6 +56,31 @@ def _basic_info() -> str:
 
 def _tab(title: str, target: str) -> str:
     return f'<li ctype="tab" id="{target}"><a title="{title}">{title}</a></li>'
+
+
+def _approval(rows: list[tuple[str, str]], *, start: int = 1,
+              total: int | None = None, next_page: bool = False) -> str:
+    total = len(rows) if total is None else total
+    count = f"{start} - {start + len(rows) - 1}/{total}" if rows else "0 - 0/0"
+    headers = ''.join(
+        f'<span id="approval_ttrow_[C:{index}]_ttitle-lb">{field}</span>'
+        for index, field in enumerate(("姓名", "核簽結果"))
+    )
+    body = ''.join(
+        f'<tr id="approval_tbod_tdrow-tr[R:{index}]">'
+        f'<td id="approval_tdrow_[C:0]-c[R:{index}]"><span title="{name}">{name}</span></td>'
+        f'<td id="approval_tdrow_[C:1]-c[R:{index}]"><span title="{result}">{result}</span></td>'
+        '</tr>'
+        for index, (name, result) in enumerate(rows)
+    )
+    next_button = (
+        '<a id="approval-ti7"><img id="approval-ti7_img" src="tablebtn_next_on.gif"></a>'
+        if next_page else ''
+    )
+    return (
+        f'<label class="tCount" id="approval-lb3">{count}</label>{next_button}'
+        f'<table id="approval_tbod-tbd" summary="核簽流程">{headers}{body}</table>'
+    )
 
 
 def _fault_notices(*, count: int = 0, total: int | None = None) -> str:
@@ -168,24 +194,29 @@ def _table(
 
 
 def _run(
-    monkeypatch: pytest.MonkeyPatch, response: str, *, fault_count: int = 0
+    monkeypatch: pytest.MonkeyPatch, response: str, *, fault_count: int = 0,
+    status: str = "核簽中", approval: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     reader = DailyInspectionInspectionRecordReader(SimpleNamespace(state=STATE))
     monkeypatch.setattr(
         reader,
         "open_detail",
         lambda number: (
-            "115-1A-71815", _basic_info() + _fault_notices(count=fault_count)
+            "115-1A-71815", _basic_info().replace('value="核簽中"', f'value="{status}"')
+            + _fault_notices(count=fault_count)
             + _tab("檢修回報", "report-tab") + _tab("檢修人員(單位)", "personnel-tab")
+            + _tab("核簽記錄", "approval-tab")
         ),
     )
     calls: list[str] = []
 
     def post_event(**kwargs: Any) -> str:
         calls.append(kwargs["target_id"])
-        if len(calls) == 1:
+        if kwargs["target_id"] == "approval-tab":
+            return approval if approval is not None else _approval([])
+        if kwargs["target_id"] == "personnel-tab":
             return _personnel([])
-        if len(calls) == 2:
+        if kwargs["target_id"] == "report-tab":
             return _tab("檢修記錄", "records-tab") + _notes([])
         return response
 
@@ -197,7 +228,7 @@ def test_reads_only_nonempty_remarks_and_uses_both_tabs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     result, calls = _run(monkeypatch, _table(["", " 洩漏 ", "  ", "停用"]))
-    assert calls == ["personnel-tab", "report-tab", "records-tab"]
+    assert calls == ["personnel-tab", "report-tab", "records-tab", "approval-tab"]
     assert result["query_name"] == "查詢日檢工單明細"
     assert result["count"] == 2
     assert result["records"] == [
@@ -228,7 +259,7 @@ def test_run_includes_linked_fault_notice_from_same_detail_response(
             "車組/車號": "EMU937", "故障現象": "第一行",
         }],
     }
-    assert calls == ["personnel-tab", "report-tab", "records-tab"]
+    assert calls == ["personnel-tab", "report-tab", "records-tab", "approval-tab"]
 
 
 def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -237,7 +268,7 @@ def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -
         reader,
         "open_detail",
         lambda number: (
-            "115-1A-71815", _basic_info() + _fault_notices()
+            "115-1A-71815", _basic_info().replace('value="核簽中"', 'value="檢修完成"') + _fault_notices()
             + _tab("檢修回報", "report-tab") + _tab("檢修人員(單位)", "personnel-tab")
         ),
     )
@@ -435,6 +466,54 @@ def test_tool_rejects_wrong_arg_count_before_loading_config() -> None:
         tool.execute([])
 
 
+def test_pending_approvers_follow_status_and_preserve_output_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, calls = _run(
+        monkeypatch, _table([]),
+        approval=_approval([("乙", "目前進行者"), ("甲", "目前進行者"), ("乙", "目前進行者")]),
+    )
+    assert result["待簽核人"] == ["乙", "甲"]
+    assert calls[-1] == "approval-tab"
+
+    result, calls = _run(monkeypatch, _table([]), status="檢修完成")
+    assert result["待簽核人"] == []
+    assert "approval-tab" not in calls
+
+
+def test_pending_approvers_read_all_pages_and_reject_incomplete_page() -> None:
+    responses = iter([
+        _approval([("乙", "目前進行者")], total=2, next_page=True),
+        _approval([("甲", "目前進行者")], start=2, total=2),
+    ])
+    targets: list[str] = []
+    states: list[PageState] = []
+    next_state = PageState("session", 4, "csrf", "zz_pmwo1a", "https://example.test/app")
+    current_state = STATE
+
+    def post_event(**kwargs: Any) -> str:
+        nonlocal current_state
+        targets.append(kwargs["target_id"])
+        states.append(kwargs["state"])
+        current_state = next_state
+        return next(responses)
+
+    names, next_seq = read_pending_approvers(
+        detail=_tab("核簽記錄", "approval-tab"), get_state=lambda: current_state,
+        xhr_seq=9, post_event=post_event,
+    )
+    assert names == ["乙", "甲"]
+    assert next_seq == 11
+    assert targets == ["approval-tab", "approval-ti7"]
+    assert states == [STATE, next_state]
+
+    with pytest.raises(MMISClientError, match="下一頁"):
+        read_pending_approvers(
+            detail=_tab("核簽記錄", "approval-tab"), get_state=lambda: STATE,
+            xhr_seq=9, post_event=lambda **kwargs: _approval([("甲", "目前進行者")], total=2),
+        )
+
+
 def test_groups_maintenance_personnel_by_group_and_role_sorted_by_name() -> None:
     rows = [
         {"人員群組": group, "工作角色": role, "員工代號": code,
@@ -487,6 +566,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         "success": True,
         "query_name": "查詢日檢工單明細",
         "work_order": "115-1A-71815",
+        "待簽核人": ["乙", "甲"],
         "count": 1,
         "records": [
             {"裝置名稱": "列車自動防護系統", "回報結果": "異常", "備註": "排修"}
@@ -509,6 +589,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         "query_work_order_number": "115-1A-71815",
         "success": True,
         **BASIC_VALUES,
+        "待簽核人": ["乙", "甲"],
         "已勾稽故障通報": payload["linked_fault_notices"],
         "檢修記錄": {"count": 1, "records": payload["records"]},
         "重要事項紀錄": {"count": 0, "records": []},
@@ -520,6 +601,8 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         },
     }
     assert list(output) == [
-        "query_name", "query_work_order_number", "success", *BASIC_VALUES,
+        "query_name", "query_work_order_number", "success",
+        "工作單", "車組/車號", "檢修日期", "車次", "工作單狀態",
+        "待簽核人", "開單人姓名", "開單日期",
         "已勾稽故障通報", "檢修記錄", "重要事項紀錄", "檢修人員",
     ]

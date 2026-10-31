@@ -51,6 +51,7 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
         "檢修日期": result["檢修日期"],
         "車次": result["車次"],
         "工作單狀態": result["工作單狀態"],
+        "待簽核人": result["待簽核人"],
         "開單人姓名": result["開單人姓名"],
         "開單日期": result["開單日期"],
         "已勾稽故障通報": result["linked_fault_notices"],

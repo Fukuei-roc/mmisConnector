@@ -64,6 +64,7 @@ def test_auto_link_dependency_graph_does_not_reach_cli_or_subprocess() -> None:
 
     assert reachable == {
         "auth",
+        "approval",
         "auto_link.store",
         "daily_inspection.linker",
         "daily_inspection.query",
@@ -97,6 +98,7 @@ def test_every_production_module_is_classified() -> None:
         "__init__.py",
         "__main__.py",
         "auth.py",
+        "approval.py",
         "auto_link/__init__.py",
         "auto_link/orchestrator.py",
         "auto_link/store.py",

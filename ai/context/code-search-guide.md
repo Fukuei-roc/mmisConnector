@@ -28,6 +28,7 @@
 | `MaximoEventClient` | 共用 Maximo event POST 與 app 切換 | `src/mmis_connector/events.py` |
 | `DailyInspectionWorkOrderQuery` | 依車號與日期查詢 1A 工單 | `src/mmis_connector/daily_inspection/query.py` |
 | `DailyInspectionWorkOrderDetailReader` | 依工作單號進入 1A 工單並讀取故障通報管理 | `src/mmis_connector/daily_inspection/reader.py` |
+| `read_pending_approvers` | 讀取核簽流程全部分頁並整理目前進行者；日檢與臨時檢修共用 | `src/mmis_connector/approval.py` |
 | `DailyInspectionInspectionRecordReader` | 依工作單號讀取 1A 工單檢修記錄中備註非空的列 | `src/mmis_connector/daily_inspection/reader.py` |
 | `PeriodicInspectionWorkOrderDetailReader` | 依工作單號讀取定期檢修工單檢修記錄中備註非空的四欄資料 | `src/mmis_connector/periodic_inspection/reader.py` |
 | `query_air_hose_dates_to_workbook` | 逐筆查詢定期檢修工單空氣軟管資料，將結果和續跑記錄原子寫入 Excel | `src/mmis_connector/periodic_inspection/air_hose_workbook.py` |

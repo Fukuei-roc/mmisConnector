@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..auth import MMISClientError, MMISSession, PageState
+from ..approval import read_pending_approvers
 from ..parser import (
     SUPPLEMENT_FIELDS,
     _parse_maximo_markup,
@@ -458,8 +459,16 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             )
             xhr_seq += 1
 
+        pending_approvers: list[str] = []
+        if basic_info["工作單狀態"] == "核簽中":
+            pending_approvers, xhr_seq = read_pending_approvers(
+                detail=detail_response, get_state=lambda: self.client.state or state,
+                xhr_seq=xhr_seq, post_event=self._post_event,
+            )
+
         return {
             **basic_info,
+            "待簽核人": pending_approvers,
             "success": True,
             "query_name": "查詢日檢工單明細",
             "work_order": normalized_work_order,
