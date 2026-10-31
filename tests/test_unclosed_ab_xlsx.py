@@ -38,6 +38,7 @@ def result(*records: dict) -> dict:
 def detail(number: str, *, analysis_completed: bool = True) -> dict:
     return {
         "通報號": number,
+        "段修工單": [],
         "結案狀態檢查": {
             "Sufficient Data for Fault Analysis": None,
             "Fault Analysis Completed": analysis_completed,

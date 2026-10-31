@@ -29,7 +29,7 @@ from mmis_connector.fault_notices.atp_writer import (
     ATPAnalysisAlreadyFilled, FaultNoticeATPAnalysisWriter,
 )
 
-from . import query_fault_notice_full_detail
+from . import query_fault_notice_full_detail, query_temporary_repair_work_order_detail
 
 
 USAGE = (
@@ -58,9 +58,6 @@ RESERVED_FIELDS = (
 )
 DETAIL_CHECK_FIELDS = RESERVED_FIELDS[:-1]
 PENDING_WORK_ORDERS_FIELD = "待簽核工單"
-PENDING_APPROVAL_CHECK_INDEX = DETAIL_CHECK_FIELDS.index(
-    "Depot Maintenance Work Orders Pending Approval"
-)
 DETAIL_CHECK_SELECT = ", ".join(f'"{field}"' for field in DETAIL_CHECK_FIELDS)
 STATUS_RULES = {
     (None, 1, 0, 0, 0, 0): "段修工單未處理完成",
@@ -225,11 +222,7 @@ def prepare_detail_checks(
     return tuple(values)
 
 
-def pending_work_orders(
-    detail: dict[str, Any], checks: tuple[int | None, ...],
-) -> str | None:
-    if checks[PENDING_APPROVAL_CHECK_INDEX] != 1:
-        return None
+def pending_work_orders(detail: dict[str, Any]) -> str | None:
     orders = detail.get("段修工單")
     if not isinstance(orders, list):
         raise MMISClientError("完整通報查詢缺少段修工單清單")
@@ -237,13 +230,42 @@ def pending_work_orders(
     for order in orders:
         if not isinstance(order, dict):
             raise MMISClientError("段修工單資料型別錯誤")
-        if order.get("工作單狀態") != "核簽中":
+        status = order.get("工作單狀態")
+        needs_report = (order.get("工單級別") in {"C1", "C2"}
+                        and status == "完工待回報")
+        if not needs_report and status != "核簽中":
             continue
         number = order.get("工作單")
         if not isinstance(number, str) or not number.strip():
-            raise MMISClientError("核簽中段修工單缺少工作單號")
-        if number.strip() not in numbers:
-            numbers.append(number.strip())
+            raise MMISClientError("待查詢段修工單缺少工作單號")
+        number = number.strip()
+        if status == "核簽中":
+            if number not in numbers:
+                numbers.append(number)
+        if not needs_report:
+            continue
+        result = query_temporary_repair_work_order_detail.execute([number])
+        if (not isinstance(result, dict)
+                or result.get("success") is not True
+                or result.get("queried_work_order_number") != number):
+            raise MMISClientError("臨時檢修工單明細與查詢號碼不符")
+        reports = result.get("試車報告")
+        if (not isinstance(reports, dict)
+                or not isinstance(reports.get("records"), list)
+                or type(reports.get("count")) is not int
+                or reports["count"] != len(reports["records"])):
+            raise MMISClientError("臨時檢修工單試車報告資料不完整")
+        for report in reports["records"]:
+            if not isinstance(report, dict):
+                raise MMISClientError("試車報告資料型別錯誤")
+            if report.get("工作單狀態") != "核簽中":
+                continue
+            report_number = report.get("工作單")
+            if (not isinstance(report_number, str)
+                    or not report_number.startswith(number + "-")):
+                raise MMISClientError("核簽中試車報告工作單號與段修工單不符")
+            if report_number not in numbers:
+                numbers.append(report_number)
     return json.dumps(numbers, ensure_ascii=False) if numbers else None
 
 
@@ -725,7 +747,7 @@ def execute(
         )
         update_detail_checks(
             notice_number, checks, path, state,
-            pending_orders=pending_work_orders(detail, checks),
+            pending_orders=pending_work_orders(detail),
         )
         state.details_processed += 1
         if not check_analysis_readiness and checks[1] == 0:

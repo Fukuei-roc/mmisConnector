@@ -360,6 +360,7 @@ def test_fixed_database_path_and_read_only_query_reuse(monkeypatch) -> None:
 def detail_result(number: str, readiness: bool | None = None) -> dict:
     return {
         "通報號": number,
+        "段修工單": [],
         "結案狀態檢查": dict(zip(tool.DETAIL_CHECK_FIELDS, (
             readiness, True, False, False, True, False,
         ), strict=True)),
@@ -414,7 +415,7 @@ def test_pending_orders_store_json_and_reset_on_next_snapshot(tmp_path) -> None:
     ]
     checks = tool.prepare_detail_checks(detail, number, require_readiness=False)
     tool.update_detail_checks(number, checks, path, tool.SyncState(),
-                              pending_orders=tool.pending_work_orders(detail, checks))
+                              pending_orders=tool.pending_work_orders(detail))
     assert json.loads(read_rows(path)[0]["待簽核工單"]) == ["115-1A-79072", "115-C1-12345"]
     tool.replace_rows(tool.prepare_rows(query_result(notice())), path, tool.SyncState())
     assert read_rows(path)[0]["待簽核工單"] is None
@@ -422,10 +423,82 @@ def test_pending_orders_store_json_and_reset_on_next_snapshot(tmp_path) -> None:
 
 def test_pending_orders_only_exact_status_and_missing_number() -> None:
     detail = {"段修工單": [{"工作單狀態": "簽核中", "工作單": "115-1A-1"}]}
-    assert tool.pending_work_orders(detail, (None, 1, 0, 1, 0, 0)) is None
+    assert tool.pending_work_orders(detail) is None
     detail["段修工單"].append({"工作單狀態": "核簽中", "工作單": " "})
     with pytest.raises(MMISClientError, match="缺少工作單號"):
-        tool.pending_work_orders(detail, (None, 1, 0, 1, 0, 0))
+        tool.pending_work_orders(detail)
+    with pytest.raises(MMISClientError, match="缺少段修工單清單"):
+        tool.pending_work_orders({"段修工單": None})
+
+
+def test_pending_orders_include_approved_test_run_report_when_parent_awaits_report(
+    monkeypatch, tmp_path,
+) -> None:
+    path = tmp_path / "notices.db"
+    number = "1151027-16"
+    row = notice()
+    row["通報號"] = number
+    monkeypatch.setattr(tool, "fetch_unclosed_fault_notices", lambda: query_result(row))
+    calls = []
+
+    def fake_detail(value, *, check_analysis_readiness):
+        detail = detail_result(value)
+        detail["結案狀態檢查"]["CA Repair Work Orders Not Closed"] = False
+        detail["段修工單"] = [
+            {"工作單": "115-1A-79507", "工單級別": "1A", "工作單狀態": "核簽中"},
+            {"工作單": "115-C2-46115", "工單級別": "C2", "工作單狀態": "完工待回報"},
+        ]
+        return detail
+
+    def fake_temporary_detail(args):
+        calls.append(args)
+        return {
+            "success": True, "queried_work_order_number": args[0],
+            "試車報告": {"count": 2, "records": [
+                {"工作單": "115-C2-46115-001", "工作單狀態": "核簽中"},
+                {"工作單": "115-C2-46115-002", "工作單狀態": "完成"},
+            ]},
+        }
+
+    monkeypatch.setattr(tool, "fetch_fault_notice_detail", fake_detail)
+    monkeypatch.setattr(tool.query_temporary_repair_work_order_detail, "execute", fake_temporary_detail)
+    summary = tool.execute([], database_path=path)
+    assert summary["success"] is True
+    assert calls == [["115-C2-46115"]]
+    assert json.loads(read_rows(path)[0]["待簽核工單"]) == [
+        "115-1A-79507", "115-C2-46115-001",
+    ]
+
+
+def test_pending_orders_ignore_other_parent_statuses_and_reject_mismatched_report(monkeypatch) -> None:
+    detail = {"段修工單": [
+        {"工作單": "115-C2-46115", "工單級別": "C2", "工作單狀態": "工單結案"},
+        {"工作單": "115-1A-79507", "工單級別": "1A", "工作單狀態": "完工待回報"},
+    ]}
+    monkeypatch.setattr(tool.query_temporary_repair_work_order_detail, "execute",
+                        lambda args: pytest.fail("不應查詢其他工單"))
+    assert tool.pending_work_orders(detail) is None
+
+    detail["段修工單"] = [
+        {"工作單": "115-C2-46115", "工單級別": "C2", "工作單狀態": "完工待回報"},
+    ]
+    monkeypatch.setattr(tool.query_temporary_repair_work_order_detail, "execute",
+                        lambda args: {"success": True, "queried_work_order_number": args[0],
+                                      "試車報告": {"count": 1, "records": [
+                                          {"工作單": "115-C2-OTHER-001", "工作單狀態": "核簽中"},
+                                      ]}})
+    with pytest.raises(MMISClientError, match="與段修工單不符"):
+        tool.pending_work_orders(detail)
+
+
+def test_pending_orders_c1_with_no_approved_test_run_report_stays_null(monkeypatch) -> None:
+    detail = {"段修工單": [
+        {"工作單": "115-C1-12345", "工單級別": "C1", "工作單狀態": "完工待回報"},
+    ]}
+    monkeypatch.setattr(tool.query_temporary_repair_work_order_detail, "execute",
+                        lambda args: {"success": True, "queried_work_order_number": args[0],
+                                      "試車報告": {"count": 0, "records": []}})
+    assert tool.pending_work_orders(detail) is None
 
 
 def test_workflow_writes_pending_orders_from_full_detail(monkeypatch, tmp_path) -> None:
