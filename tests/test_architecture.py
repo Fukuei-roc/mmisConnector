@@ -169,7 +169,9 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
     tool_paths = [
         path
         for path in DEVELOPMENT_TOOLS.glob("*.py")
-        if path.name not in {"__init__.py", "_support.py", "_unclosed_ab_xlsx.py"}
+        if path.name not in {
+            "__init__.py", "_support.py", "_unclosed_ab_xlsx.py", "_priority_approval_xlsx.py",
+        }
     ]
 
     assert len(tool_paths) == 20
