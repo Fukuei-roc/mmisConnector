@@ -51,6 +51,7 @@ def detail(number: str, *, analysis_completed: bool = True) -> dict:
 
 
 def setup_offline(monkeypatch, tmp_path: Path, *records: dict) -> tuple[Path, Path]:
+    monkeypatch.setenv("MMIS_INSPECTION_GROUP_LEADER", "測試組長")
     database = tmp_path / "data" / "unclosed_ab_fault_notices.db"
     output = tmp_path / "中文 Excel 資料夾"
     output.mkdir()
@@ -94,6 +95,9 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     assert summary["records_saved"] == summary["xlsx_export"]["records_exported"] == 1
     assert summary["xlsx_export"]["columns_exported"] == 10
     assert exported.parent == output
+    priority_export = Path(summary["priority_approval_xlsx_export"]["output_file"])
+    assert priority_export.parent == output
+    assert len(list(output.glob("*.xlsx"))) == 2
     with sqlite3.connect(database) as connection:
         assert connection.execute('SELECT "通報號" FROM unclosed_ab_fault_notices').fetchone()[0] == "new"
         assert connection.execute('SELECT "ATP故障" FROM unclosed_ab_fault_notices').fetchone()[0] == 1
@@ -359,6 +363,25 @@ def test_export_failure_keeps_committed_sqlite(monkeypatch, tmp_path, capsys) ->
     with sqlite3.connect(database) as connection:
         assert connection.execute('SELECT "通報號" FROM unclosed_ab_fault_notices').fetchone()[0] == "new"
     assert list(output.iterdir()) == []
+
+
+def test_priority_query_failure_reports_existing_ab_export(monkeypatch, tmp_path, capsys) -> None:
+    from tools.mmis_development import _priority_approval_xlsx as priority
+
+    database, output = setup_offline(monkeypatch, tmp_path, source("new"))
+
+    def fail(*args, **kwargs):
+        raise MMISClientError("工單查詢失敗")
+
+    monkeypatch.setattr(priority, "export_priority_xlsx", fail)
+    assert tool.main(["--export-xlsx"]) == 1
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["sqlite_sync_success"] is True
+    assert summary["xlsx_export"]["status"] == "success"
+    assert Path(summary["xlsx_export"]["output_file"]).is_file()
+    assert summary["priority_approval_xlsx_export"]["status"] == "failed"
+    assert len(list(output.glob("*.xlsx"))) == 1
+    assert database.is_file()
 
 
 def test_missing_export_setting_fails_only_after_sync(monkeypatch, tmp_path, capsys) -> None:

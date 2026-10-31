@@ -157,6 +157,7 @@ class SyncState:
     records_loaded: int = 0
     waiting_rechecked: bool = False
     export_requested: bool = False
+    completed_xlsx_export: dict[str, Any] | None = None
     sync_completed: bool = False
     analysis_target: str | None = None
     analysis_written: int = 0
@@ -835,6 +836,12 @@ def execute(
         result["xlsx_export"] = export_unclosed_ab_fault_notices_from_db.execute(
             [], database_path=path, expected_records=result["records_saved"],
         )["xlsx_export"]
+        state.completed_xlsx_export = result["xlsx_export"]
+        from ._priority_approval_xlsx import export_priority_xlsx
+
+        result["priority_approval_xlsx_export"] = export_priority_xlsx(
+            path, TABLE_NAME, tuple(column[0] for column in COLUMNS),
+        )
     return result
 
 
@@ -887,6 +894,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "status": "failed" if state.sync_completed else "not_run",
                 "reason": message if state.sync_completed else "SQLite 同步失敗",
             }
+            if state.completed_xlsx_export is not None:
+                result["xlsx_export"] = state.completed_xlsx_export
+                result["priority_approval_xlsx_export"] = {
+                    "status": "failed", "reason": message,
+                }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))

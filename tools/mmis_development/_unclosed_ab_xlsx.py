@@ -215,10 +215,21 @@ def export_xlsx(
         row_height=row_height, vertical_alignment=vertical_alignment,
         column_widths=column_widths,
     )
+    return save_workbook(
+        workbook, directory, file_prefix=FILE_PREFIX,
+        records_exported=len(rows), columns_exported=len(visible_columns), now=now,
+    )
+
+
+def save_workbook(
+    workbook: Workbook, directory: Path, *, file_prefix: str,
+    records_exported: int, columns_exported: int,
+    now: datetime | None = None,
+) -> dict[str, Any]:
     date = (now or datetime.now(ZoneInfo("Asia/Taipei"))).astimezone(
         ZoneInfo("Asia/Taipei")
     ).strftime("%m%d")
-    base = f"{FILE_PREFIX}{date}"
+    base = f"{file_prefix}{date}"
     output_file: Path | None = None
     export_done = False
     try:
@@ -237,8 +248,8 @@ def export_xlsx(
             workbook.save(handle)
         export_done = True
         return {
-            "status": "success", "records_exported": len(rows),
-            "columns_exported": len(visible_columns), "output_file": str(output_file),
+            "status": "success", "records_exported": records_exported,
+            "columns_exported": columns_exported, "output_file": str(output_file),
         }
     except OSError as exc:
         raise XlsxExportError(f"XLSX 寫入失敗: {type(exc).__name__}") from exc
