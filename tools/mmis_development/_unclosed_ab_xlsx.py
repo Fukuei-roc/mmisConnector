@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sqlite3
@@ -27,6 +28,7 @@ FILE_PREFIX = "AB級未處理故障通報_程式產生"
 FONT_NAME = "微軟正黑體"
 FONT_SIZE = 12
 LONG_TEXT_COLUMNS = {"故障現象", "備註"}
+PENDING_WORK_ORDERS_FIELD = "待簽核工單"
 
 
 class XlsxExportError(MMISClientError):
@@ -83,6 +85,18 @@ def _line_count(value: object, usable_width: int) -> int:
         max(1, math.ceil(_display_width(line) / usable_width))
         for line in str(value).split("\n")
     )
+
+
+def _display_pending_work_orders(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        orders = json.loads(value)
+    except (TypeError, ValueError) as exc:
+        raise XlsxExportError("SQLite 待簽核工單不是有效的 JSON 陣列") from exc
+    if not isinstance(orders, list) or any(not isinstance(order, str) for order in orders):
+        raise XlsxExportError("SQLite 待簽核工單不是字串陣列")
+    return ",".join(orders)
 
 
 def build_workbook(
@@ -188,7 +202,14 @@ def export_xlsx(
             (row[index] is None, str(row[index]) if row[index] is not None else "")
             for index in sort_indices
         ))
-    visible_rows = [tuple(row[index] for index in visible_indices) for row in rows]
+    visible_rows = [
+        tuple(
+            _display_pending_work_orders(row[index])
+            if columns[index] == PENDING_WORK_ORDERS_FIELD else row[index]
+            for index in visible_indices
+        )
+        for row in rows
+    ]
     workbook = build_workbook(
         visible_rows, visible_columns, boolean_columns,
         row_height=row_height, vertical_alignment=vertical_alignment,

@@ -91,7 +91,7 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     exported = Path(summary["xlsx_export"]["output_file"])
     assert summary["operation"] == "sync_and_export_xlsx"
     assert summary["records_saved"] == summary["xlsx_export"]["records_exported"] == 1
-    assert summary["xlsx_export"]["columns_exported"] == 9
+    assert summary["xlsx_export"]["columns_exported"] == 10
     assert exported.parent == output
     with sqlite3.connect(database) as connection:
         assert connection.execute('SELECT "通報號" FROM unclosed_ab_fault_notices').fetchone()[0] == "new"
@@ -100,14 +100,15 @@ def test_export_syncs_fresh_sqlite_before_reading_xlsx(monkeypatch, tmp_path, ca
     assert workbook.sheetnames == [xlsx.SHEET_NAME]
     sheet = workbook.active
     assert tuple(cell.value for cell in sheet[1]) == tuple(
-            name for name in columns() if name not in (*tool.DETAIL_CHECK_FIELDS, tool.PENDING_WORK_ORDERS_FIELD)
+            name for name in columns() if name not in tool.DETAIL_CHECK_FIELDS
     )
-    assert sheet.max_column == 9 and sheet.max_row == 2
+    assert sheet.max_column == 10 and sheet.max_row == 2
     assert sheet.cell(2, 8).value == "new"
     assert sheet.cell(2, 8).fill.patternType is None
     assert sheet.cell(2, 5).value == "Y"
     assert sheet.cell(2, 5).data_type == "s"
     assert sheet.cell(2, 9).value == "段修工單未處理完成"
+    assert sheet.cell(2, 10).value is None
     assert sheet.column_dimensions["I"].width == 28.9
     assert sheet.row_dimensions[1].height == sheet.row_dimensions[2].height == 15.5
     for cell in sheet[1]:
@@ -264,7 +265,7 @@ def test_first_filename_has_no_suffix_and_empty_snapshot_has_header(monkeypatch,
     workbook = load_workbook(exported)
     assert workbook.active.max_row == 1
     assert tuple(cell.value for cell in workbook.active[1]) == tuple(
-            name for name in columns() if name not in (*tool.DETAIL_CHECK_FIELDS, tool.PENDING_WORK_ORDERS_FIELD)
+            name for name in columns() if name not in tool.DETAIL_CHECK_FIELDS
     )
     workbook.close()
 

@@ -42,6 +42,11 @@ def test_exports_existing_database_without_sync(monkeypatch, tmp_path, capsys) -
             'WHERE "通報號" = ?',
             ("1151021-01",),
         )
+        connection.execute(
+            'UPDATE unclosed_ab_fault_notices SET "待簽核工單" = ? '
+            'WHERE "通報號" = ?',
+            (json.dumps(["115-1A-78486", "115-C1-46055"]), "1151021-01"),
+        )
     before = hashlib.sha256(database.read_bytes()).digest()
     monkeypatch.setattr(snapshot, "DATABASE_PATH", database)
     monkeypatch.setattr(
@@ -54,7 +59,7 @@ def test_exports_existing_database_without_sync(monkeypatch, tmp_path, capsys) -
     result = json.loads(capsys.readouterr().out)
     assert result["operation"] == "export_existing_sqlite_to_xlsx"
     assert result["xlsx_export"]["records_exported"] == 1
-    assert result["xlsx_export"]["columns_exported"] == 9
+    assert result["xlsx_export"]["columns_exported"] == 10
     assert hashlib.sha256(database.read_bytes()).digest() == before
 
     workbook = load_workbook(result["xlsx_export"]["output_file"])
@@ -63,12 +68,23 @@ def test_exports_existing_database_without_sync(monkeypatch, tmp_path, capsys) -
         assert sheet.title == xlsx.SHEET_NAME
         assert tuple(cell.value for cell in sheet[1]) == (
             "車次", "車組/車號", "發生日期", "事故等級", "ATP故障",
-            "故障現象", "狀態", "通報號", "備註",
+            "故障現象", "狀態", "通報號", "備註", "待簽核工單",
         )
         assert sheet.cell(2, 8).value == "1151021-01"
         assert sheet.cell(2, 5).value == "Y"
         assert sheet.cell(2, 5).data_type == "s"
         assert sheet.cell(2, 9).value is None
+        assert sheet.cell(2, 10).value == "115-1A-78486,115-C1-46055"
+        assert sheet.cell(2, 10).data_type == "s"
+        for row_number in (1, 2):
+            note = sheet.cell(row_number, 9)
+            pending = sheet.cell(row_number, 10)
+            assert (pending.font.name, pending.font.sz, pending.font.bold) == (
+                note.font.name, note.font.sz, note.font.bold,
+            )
+            assert (pending.alignment.horizontal, pending.alignment.vertical) == (
+                note.alignment.horizontal, note.alignment.vertical,
+            )
         assert all(sheet.row_dimensions[row].height == 15.5 for row in (1, 2))
         assert all(
             cell.alignment.vertical == "top"
@@ -78,6 +94,7 @@ def test_exports_existing_database_without_sync(monkeypatch, tmp_path, capsys) -
         assert [sheet.column_dimensions[column].width for column in "ABCDEFGHI"] == [
             6.5, 11.8, 14.5, 10.6, 10.6, 70, 10.6, 14.9, 28.9,
         ]
+        assert sheet.column_dimensions["J"].width == 36.1
     finally:
         workbook.close()
 
