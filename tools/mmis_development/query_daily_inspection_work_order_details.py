@@ -50,6 +50,7 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
         "車組/車號": result["車組/車號"],
         "檢修日期": result["檢修日期"],
         "車次": result["車次"],
+        "檢修段": result["檢修段"],
         "工作單狀態": result["工作單狀態"],
         "待簽核人": result["待簽核人"],
         "開單人姓名": result["開單人姓名"],

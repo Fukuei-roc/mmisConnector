@@ -36,7 +36,8 @@ MAINTENANCE_PERSONNEL_SUMMARY = "檢修人員"
 MAINTENANCE_PERSONNEL_FIELDS = ("人員群組", "工作角色", "員工代號", "姓名", "單位")
 WORK_ORDER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 BASIC_INSPECTION_FIELDS = (
-    "工作單", "車組/車號", "檢修日期", "車次", "工作單狀態", "開單人姓名", "開單日期",
+    "工作單", "車組/車號", "檢修日期", "車次", "檢修段", "工作單狀態",
+    "開單人姓名", "開單日期",
 )
 BASIC_INSPECTION_DATE_FIELDS = {"檢修日期", "開單日期"}
 
@@ -65,12 +66,14 @@ def confirm_detail_work_order(response: str, expected_work_order: str) -> None:
 def parse_daily_inspection_basic_info(
     response: str, *, expected_work_order: str
 ) -> dict[str, str]:
-    """Read the seven visible fields from the opened 1A work order."""
+    """Read the visible fields from the opened 1A work order."""
     _, soup = _parse_maximo_markup(response)
     result: dict[str, str] = {}
     for field in BASIC_INSPECTION_FIELDS:
         values: list[str] = []
         for label in soup.find_all("label", attrs={"for": True}):
+            if field == "檢修段":
+                continue
             if label.get_text(" ", strip=True).rstrip(":：").strip() != field:
                 continue
             control = soup.find("input", id=str(label["for"]))
@@ -91,6 +94,11 @@ def parse_daily_inspection_basic_info(
                     except (ValueError, OverflowError, OSError) as exc:
                         raise MMISClientError(f"日檢工單基本資料「{field}」日期無效") from exc
             values.append(value)
+        if field == "檢修段":
+            values = [
+                str(control.get("value", "")).strip()
+                for control in soup.find_all("input", attrs={"aria-label": "檢修段 說明"})
+            ]
         if not values or len(set(values)) != 1:
             raise MMISClientError(f"日檢工單基本資料「{field}」缺失或不一致")
         result[field] = values[0]

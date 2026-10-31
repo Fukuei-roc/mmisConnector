@@ -40,6 +40,7 @@ BASIC_VALUES = {
     "車組/車號": "EMU937",
     "檢修日期": "2026/10/06",
     "車次": "1243",
+    "檢修段": "新竹機務段",
     "工作單狀態": "核簽中",
     "開單人姓名": "系統管理人員",
     "開單日期": "2026/09/26 01:15",
@@ -48,8 +49,14 @@ BASIC_VALUES = {
 
 def _basic_info() -> str:
     return "".join(
-        f'<label for="basic-{index}">{field}:</label>'
-        f'<input id="basic-{index}" value="{value}">'
+        (
+            f'<label for="basic-{index}">{field}:</label>'
+            f'<input id="basic-{index}" value="MHY10">'
+            f'<input id="mba9da767-tb2" aria-label="檢修段 說明" value="{value}">'
+            if field == "檢修段" else
+            f'<label for="basic-{index}">{field}:</label>'
+            f'<input id="basic-{index}" value="{value}">'
+        )
         for index, (field, value) in enumerate(BASIC_VALUES.items())
     )
 
@@ -446,6 +453,24 @@ def test_basic_information_rejects_mismatch_and_conflicting_duplicate() -> None:
         parse_daily_inspection_basic_info(conflicting, expected_work_order="115-1A-71815")
 
 
+def test_basic_information_reads_repair_depot_from_aria_label() -> None:
+    assert parse_daily_inspection_basic_info(
+        _basic_info(), expected_work_order="115-1A-71815"
+    )["檢修段"] == "新竹機務段"
+
+
+def test_basic_information_rejects_missing_or_conflicting_repair_depot_description() -> None:
+    description = (
+        '<input id="mba9da767-tb2" aria-label="檢修段 說明" value="新竹機務段">'
+    )
+    for html in (
+        _basic_info().replace(description, ""),
+        _basic_info() + '<input aria-label="檢修段 說明" value="臺北機務段">',
+    ):
+        with pytest.raises(MMISClientError, match="檢修段.*缺失或不一致"):
+            parse_daily_inspection_basic_info(html, expected_work_order="115-1A-71815")
+
+
 def test_basic_information_formats_date_and_datetime_from_dojo_value() -> None:
     html = _basic_info()
     html = html.replace(
@@ -453,8 +478,8 @@ def test_basic_information_formats_date_and_datetime_from_dojo_value() -> None:
         'id="basic-2" value="" dojovalue="1791216000000"',
     )
     html = html.replace(
-        'id="basic-6" value="2026/09/26 01:15"',
-        'id="basic-6" value="" dojovalue="1790356547154"',
+        'id="basic-7" value="2026/09/26 01:15"',
+        'id="basic-7" value="" dojovalue="1790356547154"',
     )
     assert parse_daily_inspection_basic_info(
         html, expected_work_order="115-1A-71815"
@@ -602,7 +627,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
     }
     assert list(output) == [
         "query_name", "query_work_order_number", "success",
-        "工作單", "車組/車號", "檢修日期", "車次", "工作單狀態",
+        "工作單", "車組/車號", "檢修日期", "車次", "檢修段", "工作單狀態",
         "待簽核人", "開單人姓名", "開單日期",
         "已勾稽故障通報", "檢修記錄", "重要事項紀錄", "檢修人員",
     ]
