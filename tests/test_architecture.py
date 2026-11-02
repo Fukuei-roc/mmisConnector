@@ -124,10 +124,8 @@ def test_every_production_module_is_classified() -> None:
         "fault_notices/reader.py",
         "parser.py",
         "periodic_inspection/__init__.py",
-        "periodic_inspection/air_hose_workbook.py",
         "periodic_inspection/query.py",
         "periodic_inspection/reader.py",
-        "periodic_inspection/workbook.py",
         "temporary_repair/__init__.py",
         "temporary_repair/reader.py",
     }
@@ -174,7 +172,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         }
     ]
 
-    assert len(tool_paths) == 20
+    assert len(tool_paths) == 17
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {
