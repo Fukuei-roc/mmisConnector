@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from mmis_connector.auth import MMISConfig, MMISSession
 from mmis_connector.daily_inspection.reader import DailyInspectionInspectionRecordReader
+from mmis_connector.periodic_inspection.reader import PeriodicInspectionWorkOrderDetailReader
 from mmis_connector.temporary_repair.reader import TemporaryRepairProcedureReader
 
 from . import _unclosed_ab_xlsx as xlsx
@@ -53,15 +54,21 @@ def export_priority_xlsx(
     if not directory.is_dir():
         raise xlsx.XlsxExportError("XLSX 輸出資料夾不存在")
     numbers = pending_numbers(xlsx.read_snapshot(database_path, table_name, columns), columns)
-    selected: list[tuple[str]] = []
+    selected: list[tuple[str, str]] = []
     client = MMISSession(MMISConfig.from_env()) if numbers else None
     for number in numbers:
         if re.fullmatch(r"\d+-C\d+-\d+(?:-\d+)*", number):
             result = TemporaryRepairProcedureReader(client).run(number)
             daily = False
+            kind = "臨時檢修工單"
         elif re.fullmatch(r"\d+-1A-\d+", number):
             result = DailyInspectionInspectionRecordReader(client).run(number)
             daily = True
+            kind = "動力車日檢(1A)"
+        elif re.fullmatch(r"\d+-(?:2A|3A)-\d+(?:-\d+)*", number):
+            result = PeriodicInspectionWorkOrderDetailReader(client).run_pending_approvers(number)
+            daily = False
+            kind = "定期檢修工單"
         else:
             raise xlsx.XlsxExportError(f"優先簽核不支援的待簽核工單類型: {number}")
         if (not isinstance(result, dict) or result.get("success") is not True
@@ -73,13 +80,14 @@ def export_priority_xlsx(
         if daily and not isinstance(result.get("檢修段"), str):
             raise xlsx.XlsxExportError(f"日檢工單查詢缺少檢修段: {number}")
         if approver in people and (not daily or result["檢修段"] == "新竹機務段"):
-            selected.append((number,))
+            selected.append((kind, number))
+    selected.sort(key=lambda row: row[1])
     workbook = xlsx.build_workbook(
-        selected, ("工作單號",), frozenset(), row_height=15.5,
-        vertical_alignment="top", column_widths={"工作單號": 36.1},
+        selected, ("工單類型", "工作單號"), frozenset(), row_height=15.5,
+        vertical_alignment="top", column_widths={"工單類型": 18.3, "工作單號": 23.4},
     )
     workbook.active.title = SHEET_NAME
     return xlsx.save_workbook(
         workbook, directory, file_prefix=FILE_PREFIX,
-        records_exported=len(selected), columns_exported=1, now=now,
+        records_exported=len(selected), columns_exported=2, now=now,
     )

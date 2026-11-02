@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from ..approval import read_pending_approvers
 from ..auth import MMISClientError, MMISSession, PageState
 from ..daily_inspection.reader import normalize_work_order
 from ..events import MaximoEventClient
@@ -319,6 +320,17 @@ class PeriodicInspectionWorkOrderDetailReader:
         )
         xhr_seq += 1
         return state, detail, xhr_seq
+
+    def run_pending_approvers(self, work_order: str) -> dict[str, Any]:
+        number = normalize_work_order(work_order)
+        state, detail, xhr_seq = self._open_work_order(number)
+        if _read_labeled_input(detail, field="工作單") != number:
+            raise MMISClientError("定期檢修工單明細工作單與輸入不相符")
+        people, _ = read_pending_approvers(
+            detail=detail, get_state=lambda: self.client.state or state,
+            xhr_seq=xhr_seq, post_event=self.events.post,
+        )
+        return {"success": True, "工作單": number, "待簽核人": people}
 
     def run_air_hose_dates(self, work_order: str) -> dict[str, Any]:
         number = normalize_work_order(work_order)

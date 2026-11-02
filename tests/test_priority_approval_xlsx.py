@@ -38,7 +38,8 @@ def test_deduplicates_and_filters_both_work_order_types_and_matches_style(source
     database, columns, output = source
     insert_pending(database,
                    ["115-C1-1", "115-C2-2", "115-C3-3", "115-1A-4"],
-                   ["115-C1-1", "115-1A-5", "115-1A-6"])
+                   ["115-C1-1", "115-1A-5", "115-1A-6",
+                    "115-2A-7-001", "115-3A-8-001"])
     calls = []
 
     def temporary(self, number):
@@ -52,32 +53,51 @@ def test_deduplicates_and_filters_both_work_order_types_and_matches_style(source
                 "待簽核人": ["新任組長"] if number != "115-1A-6" else [],
                 "檢修段": "臺北機務段" if number == "115-1A-5" else "新竹機務段"}
 
+    def periodic(self, number):
+        calls.append((number, self.client))
+        return {"success": True, "工作單": number,
+                "待簽核人": ["新任組長"] if number == "115-2A-7-001" else []}
+
     monkeypatch.setattr(priority.TemporaryRepairProcedureReader, "run", temporary)
     monkeypatch.setattr(priority.DailyInspectionInspectionRecordReader, "run", daily)
-    fixed = datetime(2026, 10, 31, tzinfo=timezone.utc)
+    monkeypatch.setattr(priority.PeriodicInspectionWorkOrderDetailReader,
+                        "run_pending_approvers", periodic)
+    fixed = datetime(2026, 11, 2, tzinfo=timezone.utc)
     result = priority.export_priority_xlsx(database, snapshot.TABLE_NAME, columns,
                                            output_directory=output, now=fixed)
-    assert len(calls) == 6 and len({id(client) for _, client in calls}) == 1
-    assert result["records_exported"] == 3
-    assert Path(result["output_file"]).name == "優先簽核工單_程式產生1031.xlsx"
+    assert len(calls) == 8 and len({id(client) for _, client in calls}) == 1
+    assert result["records_exported"] == 4
+    assert result["columns_exported"] == 2
+    assert Path(result["output_file"]).name == "優先簽核工單_程式產生1102.xlsx"
     workbook = load_workbook(result["output_file"])
     try:
         sheet = workbook.active
         assert sheet.title == "優先簽核工單"
-        assert list(sheet.values) == [("工作單號",), ("115-C1-1",), ("115-C3-3",), ("115-1A-4",)]
+        assert list(sheet.values) == [
+            ("工單類型", "工作單號"),
+            ("動力車日檢(1A)", "115-1A-4"),
+            ("定期檢修工單", "115-2A-7-001"),
+            ("臨時檢修工單", "115-C1-1"),
+            ("臨時檢修工單", "115-C3-3"),
+        ]
         assert sheet["A1"].font.bold and sheet["A1"].alignment.horizontal == "center"
+        assert sheet["B1"].font.bold and sheet["B1"].alignment.horizontal == "center"
+        assert sheet.column_dimensions["A"].width == 18.3
+        assert sheet.column_dimensions["B"].width == 23.4
         for row in sheet.iter_rows():
-            cell = row[0]
-            assert cell.font.name == "微軟正黑體" and cell.font.sz == 12
-            assert cell.alignment.vertical == "top"
-            assert sheet.row_dimensions[cell.row].height == 15.5
-        assert sheet["A2"].number_format == "@" and sheet["A2"].data_type == "s"
-        assert sheet["A2"].alignment.horizontal == "left"
+            for cell in row:
+                assert cell.font.name == "微軟正黑體" and cell.font.sz == 12
+                assert cell.alignment.vertical == "top"
+                assert sheet.row_dimensions[cell.row].height == 15.5
+        for row in sheet.iter_rows(min_row=2):
+            for cell in row:
+                assert cell.number_format == "@" and cell.data_type == "s"
+                assert cell.alignment.horizontal == "left"
     finally:
         workbook.close()
 
 
-@pytest.mark.parametrize("number", ["115-C3-41264", "115-C12-41264", "115-C1-41264-001"])
+@pytest.mark.parametrize("number", ["115-C3-41264", "115-C12-41264", "115-C1-41264-001", "115-C2-46115-001"])
 def test_temporary_classes_and_test_run_children_use_temporary_reader(source, monkeypatch, number):
     database, columns, output = source
     insert_pending(database, [number])
@@ -103,7 +123,7 @@ def test_empty_list_still_exports_header_and_does_not_overwrite(source):
     assert first["records_exported"] == second["records_exported"] == 0
     assert Path(second["output_file"]).name.endswith("1031_2.xlsx")
     workbook = load_workbook(first["output_file"])
-    assert list(workbook.active.values) == [("工作單號",)]
+    assert list(workbook.active.values) == [("工單類型", "工作單號")]
     workbook.close()
 
 

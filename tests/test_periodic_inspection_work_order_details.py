@@ -365,3 +365,19 @@ def test_invalid_work_order_fails_before_app_load() -> None:
     reader = PeriodicInspectionWorkOrderDetailReader(SimpleNamespace(state=None))
     with pytest.raises(MMISClientError, match="工作單號"):
         reader.run("115/2A/69254")
+
+
+def test_pending_approvers_checks_exact_periodic_order(monkeypatch) -> None:
+    from mmis_connector.periodic_inspection import reader as periodic
+
+    client = SimpleNamespace(state=None)
+    reader = PeriodicInspectionWorkOrderDetailReader(client)
+    monkeypatch.setattr(reader, "_open_work_order", lambda number: (STATE, "detail", 7))
+    monkeypatch.setattr(periodic, "_read_labeled_input", lambda detail, field: "115-2A-79728-001")
+    monkeypatch.setattr(periodic, "read_pending_approvers", lambda **kwargs: (["新任組長"], 8))
+
+    assert reader.run_pending_approvers("115-2A-79728-001") == {
+        "success": True, "工作單": "115-2A-79728-001", "待簽核人": ["新任組長"],
+    }
+    with pytest.raises(MMISClientError, match="不相符"):
+        reader.run_pending_approvers("115-3A-79728-001")
