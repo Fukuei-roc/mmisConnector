@@ -105,6 +105,7 @@ def test_every_production_module_is_classified() -> None:
         "cli.py",
         "daily_inspection/__init__.py",
         "daily_inspection/linker.py",
+        "daily_inspection/not_submitted.py",
         "daily_inspection/query.py",
         "daily_inspection/reader.py",
         "events.py",
@@ -172,7 +173,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         }
     ]
 
-    assert len(tool_paths) == 17
+    assert len(tool_paths) == 18
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {
