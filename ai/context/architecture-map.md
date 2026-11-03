@@ -24,7 +24,7 @@
 - 同一 UI 動作包含多個 Maximo event 時，使用單一 `post_events()` 依序送出；所有 Maximo POST 禁止 transport 自動重試。
 - Maximo list 的動態 table prefix 應由必要欄名集合解析，不寫死錄製中的 prefix。
 - 寫入前需唯一且完全相符的業務鍵；寫入後需以領域資料驗證成功，並區分「結果不明」與後續導覽失敗。
-- stdout 僅輸出 JSON；診斷訊息送 stderr。
+- Development tool 預設只在 stdout 輸出 JSON；未送簽核日檢工單查詢指令在 stdout 輸出英文執行狀態、筆數與資料庫路徑。
 - Production 功能依 domain package 組織，例如 `fault_notices/query.py`、`daily_inspection/{query,reader,linker}.py` 與 `auto_link/{orchestrator,store}.py`；class 名稱反映 domain responsibility。
 
 ## 應避免的模式

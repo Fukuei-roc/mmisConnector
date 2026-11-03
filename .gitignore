@@ -17,4 +17,5 @@ tmp/
 data/*.sqlite3*
 /data/unclosed_ab_fault_notices.db*
 /data/a_level_fault_notices_awaiting_closure.db*
+/data/daily_inspection_work_orders_not_submitted_for_approval.db*
 
