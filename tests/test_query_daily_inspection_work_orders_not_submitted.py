@@ -10,6 +10,8 @@ from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.daily_inspection.not_submitted import (
     DailyInspectionNotSubmittedQuery,
     FIELDS,
+    STATUSES,
+    STATUS_FILTER,
 )
 from mmis_connector.parser import parse_maximo_table
 from tools.mmis_development import query_daily_inspection_work_orders_not_submitted_for_approval as tool
@@ -26,6 +28,7 @@ RECORDED_DOM = Path(
 def _page(
     start: int, end: int, total: int, *, next_page: bool,
     work_order_offset: int = 0, depot: str = "新竹機務段",
+    status: str = "執行中已派工",
 ) -> str:
     headers = "".join(
         f'<span id="table_ttrow_[C:{i}]_ttitle-lb">{field}</span>'
@@ -36,7 +39,7 @@ def _page(
         values = {
             1: depot,
             5: str(number + work_order_offset),
-            8: "執行中已派工",
+            8: status,
             11: "2026/11/01",
         }
         cells = "".join(
@@ -62,9 +65,12 @@ def _page(
 
 def _query(monkeypatch: pytest.MonkeyPatch, pages: list[str]):
     query = DailyInspectionNotSubmittedQuery(SimpleNamespace(state=STATE))
-    monkeypatch.setattr(query, "open_all_records", lambda: (STATE, SimpleNamespace(prefix="table")))
+    monkeypatch.setattr(
+        query.events, "load_app_with_response",
+        lambda **kwargs: (STATE, _page(1, 1, 1, next_page=False)),
+    )
     calls: list[dict[str, Any]] = []
-    responses = iter(["", "", "", *pages])
+    responses = iter(["", "", "", "", *pages])
 
     def fake_post_event(**kwargs: Any) -> str:
         calls.append(kwargs)
@@ -75,6 +81,10 @@ def _query(monkeypatch: pytest.MonkeyPatch, pages: list[str]):
 
 
 def test_reads_all_31_records_and_uses_current_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert STATUS_FILTER == (
+        "執行中已派工,執行中未派工,完工待回報,工單初始,工單取消,"
+        "工單取消核簽中,工單取消申請,工單結案,工單退回,檢修完成"
+    )
     query, calls = _query(
         monkeypatch,
         [_page(1, 30, 31, next_page=True), _page(31, 31, 31, next_page=False)],
@@ -85,14 +95,35 @@ def test_reads_all_31_records_and_uses_current_date(monkeypatch: pytest.MonkeyPa
     assert [row["工作單"] for row in result["records"]] == [str(i) for i in range(1, 32)]
     assert list(result["records"][0]) == list(FIELDS)
     assert result["records"][0]["逾期標註"] is False
-    assert [(call["event_type"], call["value"]) for call in calls[:4]] == [
+    assert [(call["event_type"], call["value"]) for call in calls[:5]] == [
         ("setvalue", "新竹機務段"),
+        ("setvalue", ""),
         ("setvalue", "<2026/11/02"),
-        ("setvalue", "執行中已派工"),
+        ("setvalue", STATUS_FILTER),
         ("filterrows", ""),
     ]
     assert calls[-1]["target_id"] == "table-ti7"
     assert calls[-1]["xhr_seq"] == 7
+    assert all(call["value"] != "useAllRecsQuery_OPTION" for call in calls)
+    assert any(
+        call["event_type"] == "setvalue"
+        and call["target_id"] == "table_tfrow_[C:2]_txt-tb"
+        and call["value"] == ""
+        for call in calls
+    )
+
+
+@pytest.mark.parametrize("status", STATUSES)
+def test_accepts_each_requested_status(monkeypatch: pytest.MonkeyPatch, status: str) -> None:
+    query, _ = _query(monkeypatch, [_page(1, 1, 1, next_page=False, status=status)])
+    result = query.run(today=datetime(2026, 11, 2))
+    assert result["records"][0]["工作單狀態"] == status
+
+
+def test_rejects_status_outside_requested_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    query, _ = _query(monkeypatch, [_page(1, 1, 1, next_page=False, status="核簽中")])
+    with pytest.raises(MMISClientError, match="不符合查詢條件"):
+        query.run(today=datetime(2026, 11, 2))
 
 
 def test_rejects_missing_next_page(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -155,9 +186,9 @@ def test_snapshot_replaces_old_rows_and_keeps_all_fields(tmp_path: Path) -> None
         connection.row_factory = sqlite3.Row
         columns = [row[1] for row in connection.execute(f"PRAGMA table_info({tool.TABLE_NAME})")]
         rows = connection.execute(f"SELECT * FROM {tool.TABLE_NAME}").fetchall()
-    assert columns == list(FIELDS)
+    assert columns == list(tool.DATABASE_FIELDS)
     assert len(rows) == 1
-    assert dict(rows[0]) == {**_record("new", True), "逾期標註": 1}
+    assert dict(rows[0]) == {**_record("new", True), "逾期標註": 1, "備註欄": ""}
 
     assert tool.replace_records([], database) == 0
     with sqlite3.connect(database) as connection:

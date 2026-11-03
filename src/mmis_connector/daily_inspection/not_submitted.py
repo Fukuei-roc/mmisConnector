@@ -5,7 +5,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..auth import MMISClientError
-from ..parser import parse_maximo_page_info, parse_maximo_table
+from ..parser import parse_maximo_page_info, parse_maximo_table, parse_maximo_table_schema
 from .query import DEPOT, DailyInspectionWorkOrderQuery
 
 
@@ -15,7 +15,11 @@ FIELDS = (
     "檢修日期", "完工日期", "階段核簽人", "逾期標註",
 )
 TABLE_HEADERS = set(FIELDS[:-1]) | {"逾期標註?"}
-STATUS = "執行中已派工"
+STATUSES = (
+    "執行中已派工", "執行中未派工", "完工待回報", "工單初始", "工單取消",
+    "工單取消核簽中", "工單取消申請", "工單結案", "工單退回", "檢修完成",
+)
+STATUS_FILTER = ",".join(STATUSES)
 
 
 class DailyInspectionNotSubmittedQuery(DailyInspectionWorkOrderQuery):
@@ -24,10 +28,21 @@ class DailyInspectionNotSubmittedQuery(DailyInspectionWorkOrderQuery):
     def run(self, *, today: datetime | None = None) -> dict[str, Any]:
         current_date = (today or datetime.now(ZoneInfo("Asia/Taipei"))).date()
         query_date = current_date.strftime("%Y/%m/%d")
-        state, schema = self.open_all_records()
+        state, app_response = self.events.load_app_with_response(
+            app_value="ZZ_PMWO1A",
+            favorite_focus="FavoriteApp_ZZ_PMWO1A",
+            expected_app_id="zz_pmwo1a",
+            display_name="動力車日檢(1A)",
+        )
+        schema = parse_maximo_table_schema(app_response, required_headers=TABLE_HEADERS)
         prefix = schema.prefix
         for xhr_seq, (column, value, focus_column) in enumerate(
-            ((1, DEPOT, 11), (11, f"<{query_date}", 8), (8, STATUS, 8)), start=3
+            (
+                (1, DEPOT, 2),
+                (2, "", 11),
+                (11, f"<{query_date}", 8),
+                (8, STATUS_FILTER, 7),
+            ), start=2
         ):
             self._post_event(
                 state=self.client.state or state,
@@ -39,7 +54,7 @@ class DailyInspectionNotSubmittedQuery(DailyInspectionWorkOrderQuery):
             )
         response = self._post_event(
             state=self.client.state or state,
-            current_focus=f"{prefix}_tfrow_[C:8]_txt-tb",
+            current_focus=f"{prefix}_tfrow_[C:7]_txt-tb",
             event_type="filterrows",
             target_id=f"{prefix}_tbod_tfrow-tr",
             value="",
@@ -87,7 +102,7 @@ class DailyInspectionNotSubmittedQuery(DailyInspectionWorkOrderQuery):
                     raise MMISClientError("日檢工單檢修日期格式無效") from exc
                 if (
                     row["檢修段"] != DEPOT
-                    or row["工作單狀態"] != STATUS
+                    or row["工作單狀態"] not in STATUSES
                     or inspection_date >= current_date
                 ):
                     raise MMISClientError("日檢工單資料不符合查詢條件")
@@ -119,7 +134,7 @@ class DailyInspectionNotSubmittedQuery(DailyInspectionWorkOrderQuery):
             "query_name": "查詢未送簽核的日檢工單",
             "depot": DEPOT,
             "before_inspection_date": query_date,
-            "status": STATUS,
+            "status": STATUS_FILTER,
             "count": len(records),
             "records": records,
         }

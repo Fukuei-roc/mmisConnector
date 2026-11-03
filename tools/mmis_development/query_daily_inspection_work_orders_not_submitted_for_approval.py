@@ -17,16 +17,18 @@ from mmis_connector.daily_inspection.not_submitted import (
 DATABASE_RELATIVE_PATH = Path("data/daily_inspection_work_orders_not_submitted_for_approval.db")
 DATABASE_PATH = Path(__file__).resolve().parents[2] / DATABASE_RELATIVE_PATH
 TABLE_NAME = "daily_inspection_work_orders_not_submitted_for_approval"
-FIELD_NAMES_SQL = ", ".join(f'"{field}"' for field in FIELDS)
+DATABASE_FIELDS = (*FIELDS, "備註欄")
+FIELD_NAMES_SQL = ", ".join(f'"{field}"' for field in DATABASE_FIELDS)
 CREATE_TABLE_SQL = f'''CREATE TABLE {TABLE_NAME} (
     {", ".join(f'"{field}" TEXT' for field in FIELDS[:-1])},
     "{FIELDS[-1]}" INTEGER NOT NULL CHECK ("{FIELDS[-1]}" IN (0, 1)),
+    "備註欄" TEXT NOT NULL DEFAULT '',
     PRIMARY KEY ("工作單")
 )'''
 INSERT_SQL = (
     f'INSERT INTO {TABLE_NAME} '
     f'({FIELD_NAMES_SQL}) '
-    f'VALUES ({", ".join("?" for _ in FIELDS)})'
+    f'VALUES ({", ".join("?" for _ in DATABASE_FIELDS)})'
 )
 XLSX_COLUMNS = ("項次", "車組/車號", "工作單", "車次", "檢修日期")
 XLSX_WIDTHS = dict(zip(XLSX_COLUMNS, (5.7, 11.8, 17.9, 6.5, 14.5), strict=True))
@@ -47,7 +49,7 @@ def replace_records(records: list[dict[str, Any]], database_path: Path | None = 
             INSERT_SQL,
             (
                 tuple(record[field] for field in FIELDS[:-1])
-                + (int(record[FIELDS[-1]]),)
+                + (int(record[FIELDS[-1]]), "")
                 for record in records
             ),
         )
@@ -74,7 +76,7 @@ def export_snapshot_xlsx(
     directory = output_directory if output_directory is not None else configured_output_directory()
     if not directory.is_dir():
         raise XlsxExportError("XLSX 輸出資料夾不存在")
-    rows = read_snapshot(database_path, TABLE_NAME, FIELDS)
+    rows = read_snapshot(database_path, TABLE_NAME, DATABASE_FIELDS)
     if len(rows) != expected_records:
         raise XlsxExportError("本次 SQLite 筆數與 XLSX 匯出筆數不符")
     indices = tuple(FIELDS.index(name) for name in XLSX_COLUMNS[1:])
