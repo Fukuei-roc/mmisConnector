@@ -412,6 +412,7 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
         )
 
         records: list[dict[str, str]] = []
+        maintenance_records_complete = True
         expected_start = 1
         expected_total: int | None = None
         xhr_seq += 1
@@ -442,6 +443,9 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
                 break
             if page.start != expected_start or page.end - page.start + 1 != len(rows):
                 raise MMISClientError("檢修記錄分頁範圍與資料不一致")
+            maintenance_records_complete = maintenance_records_complete and all(
+                str(row["回報結果"]).strip() for row in rows
+            )
             records.extend(
                 {
                     field: str(row[field]).strip()
@@ -482,6 +486,7 @@ class DailyInspectionInspectionRecordReader(DailyInspectionWorkOrderDetailReader
             "work_order": normalized_work_order,
             "count": len(records),
             "records": records,
+            "maintenance_records_complete": maintenance_records_complete,
             "linked_fault_notices": linked_fault_notices,
             "important_notes": {
                 "count": len(important_notes), "records": important_notes,

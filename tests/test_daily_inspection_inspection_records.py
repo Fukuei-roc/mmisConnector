@@ -35,6 +35,11 @@ PERSONNEL_RECORDED_DOM = Path(
     r"\2026-10-12_query-daily-inspection-work-order-maintenance-personnel-list\dom"
     r"\2026-10-12T063348-932.html"
 )
+COMPLETION_RECORDED_DOM = Path(
+    r"C:\Docker\maximoFlowRecorder\recordings"
+    r"\2026-11-03_check-daily-inspection-work-order-maintenance-records-completion\dom"
+    r"\2026-11-03T052229-314.html"
+)
 BASIC_VALUES = {
     "工作單": "115-1A-71815",
     "車組/車號": "EMU937",
@@ -172,9 +177,10 @@ def _notes(rows: list[tuple[str, ...]], *, start: int = 1,
 
 def _table(
     remarks: list[str], *, start: int = 1, total: int | None = None,
-    next_page: bool = False,
+    next_page: bool = False, report_results: list[str] | None = None,
 ) -> str:
     total = len(remarks) if total is None else total
+    results = report_results if report_results is not None else ["異常"] * len(remarks)
     headers = "".join(
         f'<span id="work_ttrow_[C:{column}]_ttitle-lb">{name}</span>'
         for column, name in ((3, "裝置名稱"), (6, "回報結果"), (8, "備註"))
@@ -182,7 +188,8 @@ def _table(
     rows = "".join(
         f'<tr id="work_tbod_tdrow-tr[R:{i}]">'
         f'<td id="work_tdrow_[C:3]-c[R:{i}]"><span title="裝置{i}">裝置{i}</span></td>'
-        f'<td id="work_tdrow_[C:6]-c[R:{i}]"><span title="異常">異常</span></td>'
+        f'<td id="work_tdrow_[C:6]-c[R:{i}]">'
+        f'<span title="{results[i]}">{results[i]}</span></td>'
         f'<td id="work_tdrow_[C:8]-c[R:{i}]"><input id="work_tdrow_[C:8]_txt-tb[R:{i}]" value="{remark}"></td>'
         "</tr>"
         for i, remark in enumerate(remarks)
@@ -237,6 +244,7 @@ def test_reads_only_nonempty_remarks_and_uses_both_tabs(
     result, calls = _run(monkeypatch, _table(["", " 洩漏 ", "  ", "停用"]))
     assert calls == ["personnel-tab", "report-tab", "records-tab", "approval-tab"]
     assert result["query_name"] == "查詢日檢工單明細"
+    assert result["maintenance_records_complete"] is True
     assert result["count"] == 2
     assert result["records"] == [
         {"裝置名稱": "裝置1", "回報結果": "異常", "備註": "洩漏"},
@@ -253,6 +261,18 @@ def test_all_empty_remarks_are_successful_empty_result(
     assert result["success"] is True
     assert result["count"] == 0
     assert result["records"] == []
+    assert result["maintenance_records_complete"] is True
+
+
+@pytest.mark.parametrize("report_results", [["異常", ""], ["  ", "正常"]])
+def test_blank_report_result_is_incomplete_even_without_remarks(
+    monkeypatch: pytest.MonkeyPatch, report_results: list[str],
+) -> None:
+    result, _ = _run(
+        monkeypatch,
+        _table(["", "有備註"], report_results=report_results),
+    )
+    assert result["maintenance_records_complete"] is False
 
 
 def test_run_includes_linked_fault_notice_from_same_detail_response(
@@ -297,12 +317,38 @@ def test_reads_all_pages_without_losing_order(monkeypatch: pytest.MonkeyPatch) -
     result = reader.run("115-1A-71815")
     assert targets == ["personnel-tab", "report-tab", "records-tab", "work-ti7"]
     assert [record["備註"] for record in result["records"]] == ["第一頁", "第二頁"]
+    assert result["maintenance_records_complete"] is True
+
+
+def test_blank_report_result_on_later_page_is_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader = DailyInspectionInspectionRecordReader(SimpleNamespace(state=STATE))
+    monkeypatch.setattr(
+        reader, "open_detail",
+        lambda number: (
+            "115-1A-71815", _basic_info().replace('value="核簽中"', 'value="檢修完成"')
+            + _fault_notices() + _tab("檢修回報", "report-tab")
+            + _tab("檢修人員(單位)", "personnel-tab")
+        ),
+    )
+    responses = iter([
+        _personnel([]),
+        _tab("檢修記錄", "records-tab") + _notes([]),
+        _table([""], total=2, next_page=True),
+        _table([""], start=2, total=2, report_results=[""]),
+    ])
+    monkeypatch.setattr(reader, "_post_event", lambda **kwargs: next(responses))
+    result = reader.run("115-1A-71815")
+    assert result["maintenance_records_complete"] is False
+    assert result["records"] == []
 
 
 def test_empty_source_table_is_successful(monkeypatch: pytest.MonkeyPatch) -> None:
     result, _ = _run(monkeypatch, _table([]))
     assert result["count"] == 0
     assert result["records"] == []
+    assert result["maintenance_records_complete"] is True
     assert result["maintenance_personnel"] == {"count": 0, "records": []}
 
 
@@ -370,6 +416,16 @@ def test_recorded_dom_yields_one_of_26_rows(monkeypatch: pytest.MonkeyPatch) -> 
             "備註": "EM9373#4齒輪箱洩漏大，禁用。",
         }
     ]
+
+
+@pytest.mark.skipif(
+    not COMPLETION_RECORDED_DOM.exists(), reason="本機未提供填報完整性錄製 DOM"
+)
+def test_recorded_completion_dom_has_all_report_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _ = _run(monkeypatch, COMPLETION_RECORDED_DOM.read_text(encoding="utf-8"))
+    assert result["maintenance_records_complete"] is True
 
 
 @pytest.mark.skipif(not BASIC_RECORDED_DOM.exists(), reason="本機未提供日檢基本資料錄製 DOM")
@@ -596,6 +652,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         "records": [
             {"裝置名稱": "列車自動防護系統", "回報結果": "異常", "備註": "排修"}
         ],
+        "maintenance_records_complete": True,
         "important_notes": {"count": 0, "records": []},
         "linked_fault_notices": {"count": 1, "records": [{"故障通報號": "1151006-32"}]},
         "maintenance_personnel": {"count": 0, "records": []},
@@ -615,6 +672,7 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         "success": True,
         **BASIC_VALUES,
         "待簽核人": ["乙", "甲"],
+        "maintenance_records_complete": True,
         "已勾稽故障通報": payload["linked_fault_notices"],
         "檢修記錄": {"count": 1, "records": payload["records"]},
         "重要事項紀錄": {"count": 0, "records": []},
@@ -629,5 +687,6 @@ def test_tool_nests_only_count_and_records_under_inspection_records(
         "query_name", "query_work_order_number", "success",
         "工作單", "車組/車號", "檢修日期", "車次", "檢修段", "工作單狀態",
         "待簽核人", "開單人姓名", "開單日期",
+        "maintenance_records_complete",
         "已勾稽故障通報", "檢修記錄", "重要事項紀錄", "檢修人員",
     ]

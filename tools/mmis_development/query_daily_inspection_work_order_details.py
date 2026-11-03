@@ -55,6 +55,7 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
         "待簽核人": result["待簽核人"],
         "開單人姓名": result["開單人姓名"],
         "開單日期": result["開單日期"],
+        "maintenance_records_complete": result["maintenance_records_complete"],
         "已勾稽故障通報": result["linked_fault_notices"],
         "檢修記錄": {"count": result["count"], "records": result["records"]},
         "重要事項紀錄": result["important_notes"],
