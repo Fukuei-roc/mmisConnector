@@ -23,7 +23,7 @@
 ## 資料與錯誤契約
 
 - 輸入：無參數或 `--export-xlsx`；查詢日期取執行時 `Asia/Taipei` 當日。
-- 加上 `--export-xlsx` 時，SQLite 快照成功後，讀取該快照產生五欄 Excel：項次、車組/車號、工作單、車次、檢修日期。先依檢修日期升序、車次 A 到 Z、車組/車號 A 到 Z 排序，再由 1 起編項次。
+- 加上 `--export-xlsx` 時，SQLite 快照成功後，讀取並核對完整快照筆數，只保留「備註欄」精確等於「通知檢車室」的資料，產生五欄 Excel：項次、車組/車號、工作單、車次、檢修日期。先篩選，再依檢修日期升序、車次 A 到 Z、車組/車號 A 到 Z 排序，最後由 1 起編項次。零筆符合時仍產生只有標題列的 Excel。
 - Excel 輸出目錄取 `.env` 的 `UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR`；檔名為 `檢車室未填檢修人員日檢工單_程式產生MMDD.xlsx`。同名檔存在時沿用既有匯出器的序號後綴，避免覆寫。
 - Excel 欄寬依序為 5.7、11.8、17.9、6.5、14.5；所有列高（含標題列）固定為 15.5。字型、大小與對齊沿用既有 XLSX 工作表樣式。
 - 成功時標準輸出以英文列印 `Status: SUCCESS`、`Records found: <count>`、`Vehicle room notifications: <count>`、`Database path: data/daily_inspection_work_orders_not_submitted_for_approval.db`。通知筆數為 SQLite「備註欄」等於「通知檢車室」的筆數，不列印逐筆工單資料。
@@ -44,4 +44,4 @@
 - 連續執行只保留最新一次完整查詢結果；零筆結果清空舊資料。
 - 寫入失敗時回滾，前次成功結果不變。
 - Live 唯讀查詢可產生 SQLite 資料庫，並以英文顯示執行狀態、筆數及路徑。
-- `--export-xlsx` 成功時額外列印 Excel 路徑；檔案欄位、排序、項次、欄寬與樣式符合上述契約。匯出失敗時回報失敗，已提交的 SQLite 快照保留。
+- `--export-xlsx` 成功時額外列印 Excel 路徑；檔案只含需通知檢車室的資料，欄位、排序、項次、欄寬與樣式符合上述契約。匯出失敗時回報失敗，已提交的 SQLite 快照保留。

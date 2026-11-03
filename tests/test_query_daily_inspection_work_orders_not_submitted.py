@@ -352,11 +352,17 @@ def test_export_xlsx_sorts_then_numbers_and_formats(tmp_path: Path) -> None:
         ("WO-2", "2026/11/02", "A", "720"),
         ("WO-1", "2026/11/02", "A", "710"),
         ("WO-4", "2026/11/02", "B", "710"),
+        ("WO-0", "2026/11/01", "A", "700"),
     ):
         record = _record(order)
         record.update({"檢修日期": date, "車次": train, "車組/車號": vehicle})
         records.append(record)
     tool.replace_records(records, database)
+    with sqlite3.connect(database) as connection:
+        connection.executemany(
+            f'UPDATE {tool.TABLE_NAME} SET "備註欄" = ? WHERE "工作單" = ?',
+            [(tool.NOTIFICATION_NOTE, f"WO-{number}") for number in range(1, 5)],
+        )
 
     exported = tool.export_snapshot_xlsx(
         database, len(records), output_directory=tmp_path,
@@ -365,6 +371,7 @@ def test_export_xlsx_sorts_then_numbers_and_formats(tmp_path: Path) -> None:
     output = Path(exported["output_file"])
     assert output.name == "檢車室未填檢修人員日檢工單_程式產生1103.xlsx"
     assert exported["columns_exported"] == 5
+    assert exported["records_exported"] == 4
     workbook = load_workbook(output)
     try:
         sheet = workbook.active
@@ -387,6 +394,24 @@ def test_export_xlsx_sorts_then_numbers_and_formats(tmp_path: Path) -> None:
         assert sheet["A2"].font.bold is False
         assert sheet["A1"].alignment.horizontal == "center"
         assert sheet["B2"].alignment.horizontal == "left"
+    finally:
+        workbook.close()
+
+
+def test_export_xlsx_with_no_notifications_keeps_header(tmp_path: Path) -> None:
+    from openpyxl import load_workbook
+
+    database = tmp_path / "work_orders.db"
+    tool.replace_records([_record("WO-1")], database)
+
+    exported = tool.export_snapshot_xlsx(
+        database, 1, output_directory=tmp_path, now=datetime(2026, 11, 3),
+    )
+
+    assert exported["records_exported"] == 0
+    workbook = load_workbook(exported["output_file"])
+    try:
+        assert list(workbook.active.values) == [tool.XLSX_COLUMNS]
     finally:
         workbook.close()
 

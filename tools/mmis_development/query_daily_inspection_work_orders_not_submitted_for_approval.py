@@ -119,7 +119,11 @@ def export_snapshot_xlsx(
     if len(rows) != expected_records:
         raise XlsxExportError("本次 SQLite 筆數與 XLSX 匯出筆數不符")
     indices = tuple(FIELDS.index(name) for name in XLSX_COLUMNS[1:])
-    projected = [tuple(row[index] for index in indices) for row in rows]
+    note_index = DATABASE_FIELDS.index("備註欄")
+    projected = [
+        tuple(row[index] for index in indices)
+        for row in rows if row[note_index] == NOTIFICATION_NOTE
+    ]
     projected.sort(
         key=lambda row: tuple(str(row[index] or "").casefold() for index in (3, 2, 0))
     )
@@ -131,7 +135,7 @@ def export_snapshot_xlsx(
     workbook.active.title = "未填檢修人員日檢工單"
     return save_workbook(
         workbook, directory, file_prefix="檢車室未填檢修人員日檢工單_程式產生",
-        records_exported=len(rows), columns_exported=len(XLSX_COLUMNS), now=now,
+        records_exported=len(projected), columns_exported=len(XLSX_COLUMNS), now=now,
     )
 
 
