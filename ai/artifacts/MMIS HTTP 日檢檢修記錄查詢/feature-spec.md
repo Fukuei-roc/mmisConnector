@@ -104,6 +104,14 @@
 - 回歸：執行相關 pytest、完整 pytest、`compileall`、`git diff --check`。
 - Live：若本機 MMIS 連線與有效憑證可用，執行指定工作單 CLI 核對 JSON；否則列為殘留風險。
 
+## 2026-11-03 擴充：檢修記錄填報完整性
+
+- 現有 `query_daily_inspection_work_order_details` 在 `開單日期` 後輸出布林欄位 `maintenance_records_complete`，表示「檢修記錄已填報完整」。
+- 判斷範圍是「檢修記錄」子頁簽所有分頁的所有列，不受既有 `檢修記錄.records` 的備註非空篩選影響。
+- 每列「回報結果」去除邊界空白後都非空時為 `true`；任一列為空或只有空白時為 `false`。來源零筆時依全稱條件輸出 `true`。
+- 表格或分頁無法完整解析時沿用查詢錯誤，不輸出猜測的布林值。
+- 本擴充不新增 MMIS 寫入、HTTP event 或畫面變更。驗證包含錄製的 39 筆完整範例、空白值與跨頁測試。
+
 ## 情境包（Context Pack）
 
 - 任務：新增日檢工單檢修記錄備註查詢程式。

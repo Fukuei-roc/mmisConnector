@@ -11,6 +11,7 @@ from mmis_connector.daily_inspection.reader import (
     parse_daily_inspection_basic_info,
     parse_daily_inspection_linked_fault_notices,
 )
+from mmis_connector.parser import parse_maximo_page_info, parse_maximo_table_schema
 from tools.mmis_development import query_daily_inspection_work_order_details as tool
 
 
@@ -424,7 +425,15 @@ def test_recorded_dom_yields_one_of_26_rows(monkeypatch: pytest.MonkeyPatch) -> 
 def test_recorded_completion_dom_has_all_report_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    result, _ = _run(monkeypatch, COMPLETION_RECORDED_DOM.read_text(encoding="utf-8"))
+    html = COMPLETION_RECORDED_DOM.read_text(encoding="utf-8")
+    schema = parse_maximo_table_schema(
+        html, required_headers={"裝置名稱", "回報結果", "備註"}
+    )
+    page = parse_maximo_page_info(
+        html, table_prefix=schema.prefix, context_name="檢修記錄"
+    )
+    assert (page.total, page.start, page.end) == (39, 1, 39)
+    result, _ = _run(monkeypatch, html)
     assert result["maintenance_records_complete"] is True
 
 
