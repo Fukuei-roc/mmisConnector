@@ -207,6 +207,110 @@ def test_snapshot_rolls_back_on_insert_failure(tmp_path: Path) -> None:
     assert rows == [("old",)]
 
 
+def test_marks_only_dispatched_orders_with_complete_records_and_no_vehicle_room_staff(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "work_orders.db"
+    orders = [
+        ("notify", "執行中已派工"),
+        ("incomplete", "執行中已派工"),
+        ("inspector", "執行中已派工"),
+        ("technician", "執行中已派工"),
+        ("other-status", "檢修完成"),
+    ]
+    records = []
+    for number, status in orders:
+        record = _record(number)
+        record["工作單狀態"] = status
+        records.append(record)
+    tool.replace_records(records, database)
+    seen: list[str] = []
+
+    def read_detail(number: str) -> dict[str, Any]:
+        seen.append(number)
+        staff = []
+        if number == "notify":
+            staff.append({"人員群組": "檢查室", "工作角色": "檢查員", "員工代號": "3", "姓名": "丙"})
+        if number == "inspector":
+            staff.append({"人員群組": "檢車室", "工作角色": "檢查員", "員工代號": "1", "姓名": "甲"})
+        if number == "technician":
+            staff.append({"人員群組": "檢車室", "工作角色": "修繕人員", "員工代號": "2", "姓名": "乙"})
+        return {
+            "work_order": number,
+            "success": True,
+            "maintenance_records_complete": number != "incomplete",
+            "maintenance_personnel": {"records": staff},
+        }
+
+    reader = SimpleNamespace(run=read_detail)
+    assert tool.mark_orders_requiring_personnel(database, reader) == 1
+    assert seen == ["notify", "incomplete", "inspector", "technician"]
+    with sqlite3.connect(database) as connection:
+        notes = dict(connection.execute(f'SELECT "工作單", "備註欄" FROM {tool.TABLE_NAME}'))
+    assert notes == {number: "通知檢車室" if number == "notify" else "" for number, _ in orders}
+
+
+def test_detail_failure_does_not_write_partial_notes(tmp_path: Path) -> None:
+    database = tmp_path / "work_orders.db"
+    records = []
+    for number in ("first", "second"):
+        record = _record(number)
+        record["工作單狀態"] = "執行中已派工"
+        records.append(record)
+    tool.replace_records(records, database)
+
+    def read_detail(number: str) -> dict[str, Any]:
+        if number == "second":
+            raise MMISClientError("明細查詢失敗")
+        return {
+            "work_order": number, "success": True,
+            "maintenance_records_complete": True,
+            "maintenance_personnel": {"records": []},
+        }
+
+    with pytest.raises(MMISClientError, match="明細查詢失敗"):
+        tool.mark_orders_requiring_personnel(database, SimpleNamespace(run=read_detail))
+    with sqlite3.connect(database) as connection:
+        notes = connection.execute(f'SELECT "備註欄" FROM {tool.TABLE_NAME}').fetchall()
+    assert notes == [("",), ("",)]
+
+
+def test_cli_enriches_database_using_the_same_session(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(tool, "DATABASE_PATH", tmp_path / "work_orders.db")
+    session = object()
+    monkeypatch.setattr(tool, "MMISConfig", SimpleNamespace(from_env=lambda: object()))
+    monkeypatch.setattr(tool, "MMISSession", lambda config: session)
+    record = _record("115-1A-80516")
+    record["工作單狀態"] = "執行中已派工"
+    monkeypatch.setattr(
+        tool, "DailyInspectionNotSubmittedQuery",
+        lambda client: SimpleNamespace(run=lambda: {"records": [record]})
+        if client is session else pytest.fail("清單查詢未重用 session"),
+    )
+    monkeypatch.setattr(
+        tool, "DailyInspectionInspectionRecordReader",
+        lambda client: SimpleNamespace(run=lambda number: {
+            "work_order": number,
+            "success": True,
+            "maintenance_records_complete": True,
+            "maintenance_personnel": {"records": []},
+        }) if client is session else pytest.fail("明細查詢未重用 session"),
+    )
+
+    assert tool.main([]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Status: SUCCESS",
+        "Records found: 1",
+        "Vehicle room notifications: 1",
+        f"Database path: {tool.DATABASE_RELATIVE_PATH.as_posix()}",
+    ]
+    with sqlite3.connect(tool.DATABASE_PATH) as connection:
+        note = connection.execute(f'SELECT "備註欄" FROM {tool.TABLE_NAME}').fetchone()[0]
+    assert note == "通知檢車室"
+
+
 def test_cli_prints_english_result_and_writes_database(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -223,6 +327,7 @@ def test_cli_prints_english_result_and_writes_database(
     assert capsys.readouterr().out.splitlines() == [
         "Status: SUCCESS",
         "Records found: 1",
+        "Vehicle room notifications: 0",
         f"Database path: {tool.DATABASE_RELATIVE_PATH.as_posix()}",
     ]
     with sqlite3.connect(tool.DATABASE_PATH) as connection:

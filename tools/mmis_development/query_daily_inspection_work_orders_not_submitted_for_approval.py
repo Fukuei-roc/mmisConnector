@@ -13,10 +13,14 @@ from mmis_connector.daily_inspection.not_submitted import (
     DailyInspectionNotSubmittedQuery,
     FIELDS,
 )
+from mmis_connector.daily_inspection.reader import DailyInspectionInspectionRecordReader
+
+from .query_daily_inspection_work_order_details import group_maintenance_personnel
 
 DATABASE_RELATIVE_PATH = Path("data/daily_inspection_work_orders_not_submitted_for_approval.db")
 DATABASE_PATH = Path(__file__).resolve().parents[2] / DATABASE_RELATIVE_PATH
 TABLE_NAME = "daily_inspection_work_orders_not_submitted_for_approval"
+NOTIFICATION_NOTE = "通知檢車室"
 DATABASE_FIELDS = (*FIELDS, "備註欄")
 FIELD_NAMES_SQL = ", ".join(f'"{field}"' for field in DATABASE_FIELDS)
 CREATE_TABLE_SQL = f'''CREATE TABLE {TABLE_NAME} (
@@ -59,6 +63,41 @@ def replace_records(records: list[dict[str, Any]], database_path: Path | None = 
         return saved
 
 
+def mark_orders_requiring_personnel(
+    database_path: Path, reader: DailyInspectionInspectionRecordReader,
+) -> int:
+    with closing(sqlite3.connect(database_path)) as connection:
+        work_orders = [
+            row[0] for row in connection.execute(
+                f'SELECT "工作單" FROM {TABLE_NAME} '
+                'WHERE "工作單狀態" = ? ORDER BY rowid',
+                ("執行中已派工",),
+            )
+        ]
+        requiring_notice = []
+        for work_order in work_orders:
+            detail = reader.run(work_order)
+            if detail["work_order"] != work_order or detail["success"] is not True:
+                raise MMISClientError(f"日檢工單明細與快照不符: {work_order}")
+            personnel = group_maintenance_personnel(detail["maintenance_personnel"])
+            if (
+                detail["maintenance_records_complete"] is True
+                and personnel["檢車室（檢查員）"]["records"] == []
+                and personnel["檢車室（技術人員）"]["records"] == []
+            ):
+                requiring_notice.append((NOTIFICATION_NOTE, work_order))
+
+        with connection:
+            connection.executemany(
+                f'UPDATE {TABLE_NAME} SET "備註欄" = ? WHERE "工作單" = ?',
+                requiring_notice,
+            )
+        return connection.execute(
+            f'SELECT COUNT(*) FROM {TABLE_NAME} WHERE "備註欄" = ?',
+            (NOTIFICATION_NOTE,),
+        ).fetchone()[0]
+
+
 def export_snapshot_xlsx(
     database_path: Path, expected_records: int, *,
     output_directory: Path | None = None, now: datetime | None = None,
@@ -99,11 +138,16 @@ def export_snapshot_xlsx(
 def execute(args: Sequence[str]) -> dict[str, Any]:
     if list(args) not in ([], ["--export-xlsx"]):
         raise MMISClientError(f"用法: {USAGE}")
-    result = DailyInspectionNotSubmittedQuery(MMISSession(MMISConfig.from_env())).run()
+    session = MMISSession(MMISConfig.from_env())
+    result = DailyInspectionNotSubmittedQuery(session).run()
     count = replace_records(result["records"])
+    notification_count = mark_orders_requiring_personnel(
+        DATABASE_PATH, DailyInspectionInspectionRecordReader(session)
+    )
     output = {
         "success": True,
         "count": count,
+        "notification_count": notification_count,
         "database_path": DATABASE_RELATIVE_PATH.as_posix(),
     }
     if args:
@@ -122,6 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print("Status: SUCCESS")
     print(f"Records found: {result['count']}")
+    print(f"Vehicle room notifications: {result['notification_count']}")
     print(f"Database path: {result['database_path']}")
     if "xlsx_export" in result:
         print(f"Excel path: {result['xlsx_export']['output_file']}")
