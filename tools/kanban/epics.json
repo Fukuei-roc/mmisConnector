@@ -29,6 +29,16 @@
       ]
     },
     {
+      "name": "MMIS HTTP 未送簽核日檢工單查詢",
+      "definition": "查詢未送簽核的日檢工單，建立 SQLite 快照，並依需求匯出檢視用 Excel。",
+      "stories": [
+        {
+          "name": "將查詢結果交付檢車室檢視",
+          "definition": "以指定欄位、排序與格式將查詢快照匯出為一份或多份 Excel。"
+        }
+      ]
+    },
+    {
       "name": "MMIS HTTP 日檢工單查詢",
       "definition": "以 HTTP-only 流程依車組／車號與檢修日期查詢動力車日檢(1A)工單。",
       "stories": [

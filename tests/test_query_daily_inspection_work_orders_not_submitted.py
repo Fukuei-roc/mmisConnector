@@ -415,6 +415,65 @@ def test_export_xlsx_with_no_notifications_keeps_header(tmp_path: Path) -> None:
         workbook.close()
 
 
+def test_export_unsigned_complement_uses_other_rows_and_matching_style(tmp_path: Path) -> None:
+    from openpyxl import load_workbook
+
+    database = tmp_path / "work_orders.db"
+    records = []
+    for number, vehicle in ((1, "EMU710"), (2, "DR720"), (3, "R153"), (4, "700")):
+        record = _record(f"WO-{number}")
+        record.update({
+            "車組/車號": vehicle,
+            "車次": f"T-{number}",
+            "工作單狀態": "執行中已派工",
+            "處理人員": "測試人員",
+            "階段核簽人": "核簽人",
+            "檢修日期": "2026/11/03",
+            "完工日期": "2026/11/04",
+        })
+        records.append(record)
+    tool.replace_records(records, database)
+    with sqlite3.connect(database) as connection:
+        connection.executemany(
+            f'UPDATE {tool.TABLE_NAME} SET "備註欄" = ? WHERE "工作單" = ?',
+            [(tool.NOTIFICATION_NOTE, "WO-1"), (tool.NOTIFICATION_NOTE, "WO-3")],
+        )
+
+    first_export = tool.export_snapshot_xlsx(
+        database, len(records), output_directory=tmp_path,
+        now=datetime(2026, 11, 4),
+    )
+    assert first_export["records_exported"] == 1
+    exported = tool.export_unsigned_complement_xlsx(
+        database, len(records), first_export["output_file"], output_directory=tmp_path,
+        now=datetime(2026, 11, 4),
+    )
+
+    assert Path(exported["output_file"]).name == "未簽核日檢工單清查_程式產生1104.xlsx"
+    assert exported["records_exported"] == 3
+    assert exported["columns_exported"] == 9
+    assert first_export["records_exported"] + exported["records_exported"] == len(records)
+    workbook = load_workbook(exported["output_file"])
+    try:
+        sheet = workbook.active
+        assert tuple(cell.value for cell in sheet[1]) == tool.UNSIGNED_XLSX_COLUMNS
+        assert [row[1] for row in sheet.iter_rows(min_row=2, values_only=True)] == [
+            "WO-2", "WO-3", "WO-4",
+        ]
+        assert sheet["A1"].font.name == sheet["A2"].font.name == "微軟正黑體"
+        assert sheet["A1"].font.sz == sheet["A2"].font.sz == 12
+        assert sheet["A1"].alignment.horizontal == "center"
+        assert sheet["A2"].alignment.horizontal == "left"
+        assert [sheet.column_dimensions[column].width for column in "ABCDEFGHI"] == [
+            11.8, 17.9, 6.5, 15.8, 10.6, 13.2, 14.5, 14.5, 30,
+        ]
+        assert [sheet.row_dimensions[row].height for row in range(1, sheet.max_row + 1)] == [
+            15.5,
+        ] * sheet.max_row
+    finally:
+        workbook.close()
+
+
 def test_cli_export_flag_uses_saved_snapshot(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -435,7 +494,14 @@ def test_cli_export_flag_uses_saved_snapshot(
         return {"output_file": str(exported_path)}
 
     monkeypatch.setattr(tool, "export_snapshot_xlsx", fake_export)
+    monkeypatch.setattr(
+        tool, "export_unsigned_complement_xlsx",
+        lambda path, count, first_export: {"output_file": str(tmp_path / "complement.xlsx")},
+    )
     assert tool.main(["--export-xlsx"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == f"Excel path: {exported_path}"
+    assert capsys.readouterr().out.splitlines()[-2:] == [
+        f"Excel path: {exported_path}",
+        f"Unsigned work orders Excel path: {tmp_path / 'complement.xlsx'}",
+    ]
     assert tool.main(["--export-xlsx", "--export-xlsx"]) == 1
     assert capsys.readouterr().out.splitlines()[-1] == "Error: MMISClientError"

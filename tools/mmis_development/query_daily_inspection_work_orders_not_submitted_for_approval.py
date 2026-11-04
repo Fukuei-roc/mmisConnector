@@ -36,6 +36,14 @@ INSERT_SQL = (
 )
 XLSX_COLUMNS = ("項次", "車組/車號", "工作單", "車次", "檢修日期")
 XLSX_WIDTHS = dict(zip(XLSX_COLUMNS, (5.7, 11.8, 17.9, 6.5, 14.5), strict=True))
+UNSIGNED_XLSX_COLUMNS = (
+    "車組/車號", "工作單", "車次", "工作單狀態", "處理人員",
+    "階段核簽人", "檢修日期", "完工日期", "備註欄",
+)
+UNSIGNED_XLSX_WIDTHS = dict(zip(
+    UNSIGNED_XLSX_COLUMNS, (11.8, 17.9, 6.5, 15.8, 10.6, 13.2, 14.5, 14.5, 30),
+    strict=True,
+))
 USAGE = (
     "python -m tools.mmis_development."
     "query_daily_inspection_work_orders_not_submitted_for_approval [--export-xlsx]"
@@ -142,6 +150,63 @@ def export_snapshot_xlsx(
     )
 
 
+def export_unsigned_complement_xlsx(
+    database_path: Path, expected_records: int, first_export_path: str | Path, *,
+    output_directory: Path | None = None, now: datetime | None = None,
+) -> dict[str, Any]:
+    try:
+        from openpyxl import load_workbook
+        from ._unclosed_ab_xlsx import (
+            XlsxExportError, build_workbook, configured_output_directory,
+            read_snapshot, save_workbook,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name == "openpyxl":
+            raise MMISClientError("未安裝 openpyxl，無法匯出 XLSX") from exc
+        raise
+
+    directory = output_directory if output_directory is not None else configured_output_directory()
+    if not directory.is_dir():
+        raise XlsxExportError("XLSX 輸出資料夾不存在")
+    work_orders_in_first_export: set[str] = set()
+    try:
+        workbook = load_workbook(first_export_path, read_only=True, data_only=True)
+        try:
+            sheet = workbook.active
+            headers = tuple(cell.value for cell in next(sheet.iter_rows(max_row=1)))
+            if headers != XLSX_COLUMNS:
+                raise XlsxExportError("檢車室未填檢修人員 Excel 欄位不符")
+            work_orders_in_first_export = {
+                row[0] for row in sheet.iter_rows(
+                    min_row=2, min_col=3, max_col=3, values_only=True,
+                ) if isinstance(row[0], str)
+            }
+        finally:
+            workbook.close()
+    except OSError as exc:
+        raise XlsxExportError("無法讀取檢車室未填檢修人員 Excel") from exc
+
+    rows = read_snapshot(database_path, TABLE_NAME, DATABASE_FIELDS)
+    if len(rows) != expected_records:
+        raise XlsxExportError("本次 SQLite 筆數與 XLSX 匯出筆數不符")
+    indices = tuple(DATABASE_FIELDS.index(name) for name in UNSIGNED_XLSX_COLUMNS)
+    work_order_index = DATABASE_FIELDS.index("工作單")
+    projected = [
+        tuple(row[index] for index in indices)
+        for row in rows
+        if row[work_order_index] not in work_orders_in_first_export
+    ]
+    workbook = build_workbook(
+        projected, UNSIGNED_XLSX_COLUMNS, frozenset(), row_height=15.5,
+        column_widths=UNSIGNED_XLSX_WIDTHS,
+    )
+    workbook.active.title = "未簽核日檢工單清查"
+    return save_workbook(
+        workbook, directory, file_prefix="未簽核日檢工單清查_程式產生",
+        records_exported=len(projected), columns_exported=len(UNSIGNED_XLSX_COLUMNS), now=now,
+    )
+
+
 def execute(args: Sequence[str]) -> dict[str, Any]:
     if list(args) not in ([], ["--export-xlsx"]):
         raise MMISClientError(f"用法: {USAGE}")
@@ -159,6 +224,9 @@ def execute(args: Sequence[str]) -> dict[str, Any]:
     }
     if args:
         output["xlsx_export"] = export_snapshot_xlsx(DATABASE_PATH, count)
+        output["unsigned_xlsx_export"] = export_unsigned_complement_xlsx(
+            DATABASE_PATH, count, output["xlsx_export"]["output_file"],
+        )
     return output
 
 
@@ -177,6 +245,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Database path: {result['database_path']}")
     if "xlsx_export" in result:
         print(f"Excel path: {result['xlsx_export']['output_file']}")
+        print(f"Unsigned work orders Excel path: {result['unsigned_xlsx_export']['output_file']}")
     return 0
 
 

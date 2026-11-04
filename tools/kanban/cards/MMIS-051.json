@@ -1,0 +1,21 @@
+{
+  "id": "MMIS-051",
+  "title": "同次匯出未簽核日檢工單清查 Excel",
+  "content": "--export-xlsx 額外產生第一份未收錄工單的九欄清查表。",
+  "stage": "verify",
+  "risk": "medium",
+  "owner": "專案使用者",
+  "agent": "Codex",
+  "approvalRequired": true,
+  "createdAt": "2026-11-04",
+  "epic": "MMIS HTTP 未送簽核日檢工單查詢",
+  "userStory": "將查詢結果交付檢車室檢視",
+  "dependsOn": [],
+  "order": 51,
+  "readiness": {"problem": true, "nonGoals": true, "acceptance": true, "context": true, "scope": true, "verification": true, "approval": true},
+  "gates": {"product": true, "ui": false, "architecture": true, "security": true, "test": true, "code_review": true},
+  "links": {"featureSpec": "ai/artifacts/MMIS HTTP 未送簽核日檢工單查詢/feature-spec.md", "screenSpec": "", "mockupDecision": "", "taskCard": "ai/artifacts/MMIS HTTP 未送簽核日檢工單查詢/task-cards/export-unsigned-complement.md", "verificationReport": "ai/artifacts/MMIS HTTP 未送簽核日檢工單查詢/verification/export-unsigned-complement.md", "pr": ""},
+  "refs": ["tools/mmis_development/query_daily_inspection_work_orders_not_submitted_for_approval.py", "tests/test_query_daily_inspection_work_orders_not_submitted.py", "tools/mmis_development/_unclosed_ab_xlsx.py"],
+  "evidence": {"commands": ["python -m pytest tests/test_query_daily_inspection_work_orders_not_submitted.py tests/test_unclosed_ab_xlsx.py tests/test_export_unclosed_ab_fault_notices_from_db.py -ra -o addopts=''", "python -m pytest tests/test_query_daily_inspection_work_orders_not_submitted.py -ra -o addopts=''", "python -m compileall -q tools/mmis_development/query_daily_inspection_work_orders_not_submitted_for_approval.py tests/test_query_daily_inspection_work_orders_not_submitted.py", "git diff --check"], "findings": ["補集測試 59 passed, 2 skipped；欄寬回歸測試 25 passed, 2 skipped", "既有 16 筆快照分割為第一份 13 筆與第二份 3 筆，工作單集合互斥且完整", "實際第二份 Excel 的九欄寬度依指定值讀回一致"], "residual": "未重跑 Live MMIS 查詢；既有 1104 檔案僅更新欄寬。"},
+  "comments": []
+}
