@@ -119,10 +119,13 @@ def export_snapshot_xlsx(
     if len(rows) != expected_records:
         raise XlsxExportError("本次 SQLite 筆數與 XLSX 匯出筆數不符")
     indices = tuple(FIELDS.index(name) for name in XLSX_COLUMNS[1:])
+    vehicle_index = FIELDS.index("車組/車號")
     note_index = DATABASE_FIELDS.index("備註欄")
     projected = [
         tuple(row[index] for index in indices)
-        for row in rows if row[note_index] == NOTIFICATION_NOTE
+        for row in rows
+        if row[note_index] == NOTIFICATION_NOTE
+        and any(marker in str(row[vehicle_index] or "").upper() for marker in ("EMU", "DR"))
     ]
     projected.sort(
         key=lambda row: tuple(str(row[index] or "").casefold() for index in (3, 2, 0))

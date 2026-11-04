@@ -348,10 +348,10 @@ def test_export_xlsx_sorts_then_numbers_and_formats(tmp_path: Path) -> None:
     database = tmp_path / "work_orders.db"
     records = []
     for order, date, train, vehicle in (
-        ("WO-3", "2026/11/03", "B", "720"),
-        ("WO-2", "2026/11/02", "A", "720"),
-        ("WO-1", "2026/11/02", "A", "710"),
-        ("WO-4", "2026/11/02", "B", "710"),
+        ("WO-3", "2026/11/03", "B", "EMU720"),
+        ("WO-2", "2026/11/02", "A", "DR720"),
+        ("WO-1", "2026/11/02", "A", "EMU710"),
+        ("WO-4", "2026/11/02", "B", "R153"),
         ("WO-0", "2026/11/01", "A", "700"),
     ):
         record = _record(order)
@@ -371,16 +371,15 @@ def test_export_xlsx_sorts_then_numbers_and_formats(tmp_path: Path) -> None:
     output = Path(exported["output_file"])
     assert output.name == "檢車室未填檢修人員日檢工單_程式產生1103.xlsx"
     assert exported["columns_exported"] == 5
-    assert exported["records_exported"] == 4
+    assert exported["records_exported"] == 3
     workbook = load_workbook(output)
     try:
         sheet = workbook.active
         assert list(sheet.values) == [
             tool.XLSX_COLUMNS,
-            (1, "710", "WO-1", "A", "2026/11/02"),
-            (2, "720", "WO-2", "A", "2026/11/02"),
-            (3, "710", "WO-4", "B", "2026/11/02"),
-            (4, "720", "WO-3", "B", "2026/11/03"),
+            (1, "DR720", "WO-2", "A", "2026/11/02"),
+            (2, "EMU710", "WO-1", "A", "2026/11/02"),
+            (3, "EMU720", "WO-3", "B", "2026/11/03"),
         ]
         assert [sheet.column_dimensions[column].width for column in "ABCDE"] == [
             5.7, 11.8, 17.9, 6.5, 14.5,
