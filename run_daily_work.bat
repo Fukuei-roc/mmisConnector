@@ -8,6 +8,10 @@ set "STEP=link"
 call :run python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders
 if errorlevel 1 goto :finish
 
+set "STEP=not_submitted"
+call :run python -m tools.mmis_development.query_daily_inspection_work_orders_not_submitted_for_approval --export-xlsx
+if errorlevel 1 goto :finish
+
 set "STEP=export"
 call :run python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --export-xlsx
 
@@ -16,9 +20,9 @@ set "FINAL_RESULT=%errorlevel%"
 if exist "%OUTPUT_FILE%" del /q "%OUTPUT_FILE%"
 popd
 echo.
-if "%FINAL_RESULT%"=="0" echo 所有程式正常執行完畢，沒有錯誤。
-if not "%FINAL_RESULT%"=="0" echo 有程式未正常執行完畢，請檢查上方結果。
-echo 按 Q 鍵關閉視窗。
+if "%FINAL_RESULT%"=="0" echo All steps completed successfully.
+if not "%FINAL_RESULT%"=="0" echo A step failed. Check the output above.
+echo Press Q to close this window.
 powershell.exe -NoProfile -Command "$Host.UI.RawUI.FlushInputBuffer(); do { $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') } until ($key.Character -eq 'q' -or $key.Character -eq 'Q')"
 exit /b %FINAL_RESULT%
 
@@ -28,23 +32,24 @@ set "ATTEMPT=0"
 set /a ATTEMPT+=1 >nul
 call %* >"%OUTPUT_FILE%" 2>&1
 set "RESULT=%errorlevel%"
+if not "%RESULT%"=="0" goto :retry_or_finish
+powershell.exe -NoProfile -Command "$raw = Get-Content -LiteralPath $env:OUTPUT_FILE -Raw -Encoding UTF8; if ($env:STEP -eq 'not_submitted') { if ($raw -match '(?m)^Status: SUCCESS\r?$') { exit 0 }; exit 1 }; $r = $raw | ConvertFrom-Json; if ($env:STEP -eq 'link' -and $r.success -eq $true -and $r.completed -eq $true -and $r.failed -eq 0) { exit 0 }; if ($env:STEP -eq 'export' -and $r.success -eq $true -and $r.xlsx_export.status -eq 'success' -and $r.priority_approval_xlsx_export.status -eq 'success') { exit 0 }; exit 1" 2>nul
+set "RESULT=%errorlevel%"
 if "%RESULT%"=="0" goto :show_result
+echo Step %STEP% returned an incomplete result.>>"%OUTPUT_FILE%"
 
-rem MMISSession reports transport failures in the JSON message field.
-powershell.exe -NoProfile -Command "$r = Get-Content -LiteralPath $env:OUTPUT_FILE -Raw -Encoding UTF8 | ConvertFrom-Json; if ($r.message -match '^MMIS 網路請求失敗: (ConnectionError|ConnectTimeout|ReadTimeout|Timeout|TimeoutError|ProxyError|SSLError|ChunkedEncodingError)$') { exit 0 }; exit 1" 2>nul
+:retry_or_finish
+if "%ATTEMPT%"=="3" goto :show_result
+if not "%STEP%"=="link" goto :wait_and_retry
+rem Link retries only on transport errors; other failures may need manual review.
+powershell.exe -NoProfile -Command "$r = Get-Content -LiteralPath $env:OUTPUT_FILE -Raw -Encoding UTF8 | ConvertFrom-Json; if ($r.message -match '^MMIS .*: (ConnectionError|ConnectTimeout|ReadTimeout|Timeout|TimeoutError|ProxyError|SSLError|ChunkedEncodingError)$') { exit 0 }; exit 1" 2>nul
 if errorlevel 1 goto :show_result
-if "%ATTEMPT%"=="1" goto :attempt
-if "%ATTEMPT%"=="2" goto :wait_and_retry
-goto :show_result
 
 :wait_and_retry
+echo Step %STEP% failed on attempt %ATTEMPT%; retrying.
 powershell.exe -NoProfile -Command "Start-Sleep -Seconds 1"
 goto :attempt
 
 :show_result
 type "%OUTPUT_FILE%"
-if not "%RESULT%"=="0" exit /b %RESULT%
-powershell.exe -NoProfile -Command "$r = Get-Content -LiteralPath $env:OUTPUT_FILE -Raw -Encoding UTF8 | ConvertFrom-Json; if ($env:STEP -eq 'link' -and $r.success -eq $true -and $r.completed -eq $true -and $r.failed -eq 0) { exit 0 }; if ($env:STEP -eq 'export' -and $r.success -eq $true -and $r.xlsx_export.status -eq 'success' -and $r.priority_approval_xlsx_export.status -eq 'success') { exit 0 }; exit 1" 2>nul
-set "RESULT=%errorlevel%"
-if not "%RESULT%"=="0" echo 程式結果未符合完成條件。
 exit /b %RESULT%
