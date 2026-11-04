@@ -36,6 +36,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 
 | Tool | 用途 | 執行方式 |
 |---|---|---|
+| 查詢未派工日檢工單並標記重複候選 | 以新竹機務段「執行中未派工」清單重建 SQLite 快照；只對重複車組補查開單日期，較舊工單標示「待工單取消」。不刪除資料列或修改 MMIS。 | `python -m tools.mmis_development.auto_delete_duplicate_daily_inspection_work_orders` |
 | 查詢故障通報完整資料（最完整） | 輸入通報號；取得基本資料、ATP 標記、段檢修與 CA 查修工單、故障分析及 MMIS 原有 ATP 分析；指定 `--ai-analysis` 且為 ATP 故障時，另產生 ATP AI 分類建議。 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150910-14` |
 | 查詢故障通報關聯的查修工單 | 輸入通報號；取得關聯的 CA 查修工單清單。 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` |
 | 查詢故障通報的故障分析 | 輸入通報號；取得事故現象、處理概況、故障原因、處理情形及改善對策。 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` |
