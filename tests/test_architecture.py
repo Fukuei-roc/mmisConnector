@@ -104,10 +104,12 @@ def test_every_production_module_is_classified() -> None:
         "auto_link/store.py",
         "cli.py",
         "daily_inspection/__init__.py",
+        "daily_inspection/cancel.py",
         "daily_inspection/linker.py",
         "daily_inspection/not_submitted.py",
         "daily_inspection/query.py",
         "daily_inspection/reader.py",
+        "daily_inspection/unassigned.py",
         "events.py",
         "fault_notices/__init__.py",
         "fault_notices/ai_analysis.py",
@@ -123,10 +125,12 @@ def test_every_production_module_is_classified() -> None:
         "fault_notices/repair_work_orders.py",
         "fault_notices/query.py",
         "fault_notices/reader.py",
+        "overdue_work_orders.py",
         "parser.py",
         "periodic_inspection/__init__.py",
         "periodic_inspection/query.py",
         "periodic_inspection/reader.py",
+        "periodic_inspection/status.py",
         "temporary_repair/__init__.py",
         "temporary_repair/reader.py",
     }
@@ -173,7 +177,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         }
     ]
 
-    assert len(tool_paths) == 18
+    assert len(tool_paths) == 22
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {
