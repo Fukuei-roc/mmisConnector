@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 from mmis_connector.overdue_work_orders import FIELDS, OverdueWorkOrderQuery
+from tools.mmis_development import audit_overdue_work_orders as tool
 from tools.mmis_development.audit_overdue_work_orders import replace_records
 
 
@@ -100,3 +102,98 @@ def test_failed_replacement_rolls_back_snapshot(tmp_path: Path) -> None:
     with sqlite3.connect(path) as connection:
         rows = connection.execute('SELECT "工單編號" FROM overdue_work_orders').fetchall()
     assert rows == [("WO-OLD",)]
+
+
+def test_audit_queries_only_periodic_orders_and_prints_noted_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "overdue.db"
+    records = []
+    for number, level in (
+        ("115-2A-74886", "2A"),
+        ("115-1A-1", "1A"),
+        ("115-3A-75840", "3A"),
+        ("115-3A-75841", "3A"),
+    ):
+        record = {field: "value" for field in FIELDS}
+        record.update({"工單編號": number, "檢修級別": level})
+        records.append(record)
+    session = object()
+    queried = []
+
+    class OverdueQuery:
+        def __init__(self, client):
+            assert client is session
+
+        def run(self):
+            return records
+
+    class StatusQuery:
+        def __init__(self, client):
+            assert client is session
+
+        def run(self, order):
+            queried.append(order)
+            statuses = (
+                ("工單退回", "核簽中", "執行中未派工")
+                if order == "115-2A-74886"
+                else ("工單退回",) if order == "115-3A-75840" else ("工單結案",)
+            )
+            return {"records": [
+                {"工作單": f"{order}-{index:03}", "工作單狀態": status}
+                for index, status in enumerate(statuses, start=1)
+            ]}
+
+    monkeypatch.setattr(tool, "DATABASE_PATH", path)
+    monkeypatch.setattr(tool.MMISConfig, "from_env", lambda: object())
+    monkeypatch.setattr(tool, "MMISSession", lambda config: session)
+    monkeypatch.setattr(tool, "OverdueWorkOrderQuery", OverdueQuery)
+    monkeypatch.setattr(tool, "CompletePeriodicInspectionWorkOrderStatusQuery", StatusQuery)
+
+    assert tool.main([]) == 0
+    assert queried == ["115-2A-74886", "115-3A-75840", "115-3A-75841"]
+    with sqlite3.connect(path) as connection:
+        notes = dict(connection.execute(
+            'SELECT "工單編號", "備註" FROM overdue_work_orders ORDER BY rowid'
+        ))
+    assert notes == {
+        "115-2A-74886": (
+            "115-2A-74886-001(工單退回),115-2A-74886-003(執行中未派工)"
+        ),
+        "115-1A-1": "",
+        "115-3A-75840": "115-3A-75840-001(工單退回)",
+        "115-3A-75841": "",
+    }
+    output = capsys.readouterr().out.splitlines()
+    printed = json.loads(output[-1])
+    assert [row["工單編號"] for row in printed] == ["115-2A-74886", "115-3A-75840"]
+    assert [row["備註"] for row in printed] == [
+        notes["115-2A-74886"], notes["115-3A-75840"]
+    ]
+    assert all(tuple(row) == (*FIELDS, "備註") for row in printed)
+
+
+def test_status_query_failure_leaves_new_snapshot_without_partial_notes(tmp_path: Path) -> None:
+    path = tmp_path / "overdue.db"
+    records = []
+    for number in ("115-2A-74886", "115-3A-75840"):
+        record = {field: "value" for field in FIELDS}
+        record.update({"工單編號": number, "檢修級別": "2A"})
+        records.append(record)
+    replace_records(records, path)
+
+    class StatusQuery:
+        def run(self, order):
+            if order == "115-3A-75840":
+                raise RuntimeError("MMIS error")
+            return {"records": [{
+                "工作單": "115-2A-74886-001", "工作單狀態": "工單退回"
+            }]}
+
+    with pytest.raises(RuntimeError, match="MMIS error"):
+        tool.annotate_periodic_records(StatusQuery(), path)
+    with sqlite3.connect(path) as connection:
+        notes = connection.execute(
+            'SELECT "備註" FROM overdue_work_orders ORDER BY rowid'
+        ).fetchall()
+    assert notes == [("",), ("",)]

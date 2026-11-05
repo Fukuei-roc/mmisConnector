@@ -46,7 +46,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢故障通報關聯的工單 | 輸入通報號；取得關聯的段檢修工單清單。 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
 | 查詢未處理故障通報 | 無需輸入；取得本段未處理故障通報清單。 | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
-| 清查逾期工單（Audit Overdue Work Orders） | 讀取「工單逾期查詢」全部結果頁的指定八欄，完整成功後重建 `data/overdue_work_orders.db`，最後一欄「備註」預設空白。 | `python -m tools.mmis_development.audit_overdue_work_orders` |
+| 清查逾期工單（Audit Overdue Work Orders） | 讀取「工單逾期查詢」全部結果頁的指定八欄並重建 `data/overdue_work_orders.db`。接著依序查詢 2A／3A 主工單的子工單狀態；非「核簽中」或「工單結案」者以 `工作單(工作單狀態)` 填入「備註」，多筆以逗號連接。最後列印備註非空的完整資料列。 | `python -m tools.mmis_development.audit_overdue_work_orders` |
 | 自動處理 A/B 級未結案故障通報（開發階段） | 同步通報與結案檢查；符合條件時以 AI 填寫並儲存 MMIS 一般故障分析，ATP 三欄全空且未完成時也填寫 ATP 故障分析；已確認的寫入逐項記入本機備註。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices` |
 | 自動處理 A/B 級未結案故障通報並匯出 XLSX | 先執行同一套 MMIS 查詢與 SQLite 全量同步，完整成功後再從本次更新的資料庫匯出 XLSX。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --export-xlsx` |
 | 查詢臨時檢修工單明細 | 輸入工作單號；取得工單基本資料、已勾稽故障通報、維修程序概況及試車報告。 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C1-41264` |

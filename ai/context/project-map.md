@@ -1,6 +1,6 @@
 # 專案地圖
 
-狀態：已更新（2026-10-27）。
+狀態：已更新（2026-11-05）。
 
 在專案導入（intake）時填寫這份文件。
 
@@ -14,7 +14,7 @@
 
 - 前端：無（CLI）
 - 後端：Python 3.11、requests、Beautiful Soup
-- 資料庫：無
+- 資料庫：本機 SQLite 快照，含 `data/overdue_work_orders.db`；不作遠端資料庫連線
 - 身分驗證：MMIS 表單登入，憑證由 `.env` 載入，登入狀態只保留於程序內的 `requests.Session`
 - 測試：pytest、錄製 DOM fixture
 - 部署：Windows 本機 CLI
