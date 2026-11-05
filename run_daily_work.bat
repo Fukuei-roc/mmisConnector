@@ -14,6 +14,10 @@ if errorlevel 1 goto :finish
 
 set "STEP=export"
 call :run python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --export-xlsx
+if errorlevel 1 goto :finish
+
+set "STEP=overdue"
+call :run python -m tools.mmis_development.audit_overdue_work_orders --export-xlsx
 
 :finish
 set "FINAL_RESULT=%errorlevel%"
@@ -33,7 +37,7 @@ set /a ATTEMPT+=1 >nul
 call %* >"%OUTPUT_FILE%" 2>&1
 set "RESULT=%errorlevel%"
 if not "%RESULT%"=="0" goto :retry_or_finish
-powershell.exe -NoProfile -Command "$raw = Get-Content -LiteralPath $env:OUTPUT_FILE -Raw -Encoding UTF8; if ($env:STEP -eq 'not_submitted') { if ($raw -match '(?m)^Status: SUCCESS\r?$') { exit 0 }; exit 1 }; $r = $raw | ConvertFrom-Json; if ($env:STEP -eq 'link' -and $r.success -eq $true -and $r.completed -eq $true -and $r.failed -eq 0) { exit 0 }; if ($env:STEP -eq 'export' -and $r.success -eq $true -and $r.xlsx_export.status -eq 'success' -and $r.priority_approval_xlsx_export.status -eq 'success') { exit 0 }; exit 1" 2>nul
+powershell.exe -NoProfile -Command "$raw = Get-Content -LiteralPath $env:OUTPUT_FILE -Raw -Encoding UTF8; if ($env:STEP -eq 'not_submitted' -or $env:STEP -eq 'overdue') { if ($raw -match '(?m)^Status: SUCCESS\r?$') { exit 0 }; exit 1 }; $r = $raw | ConvertFrom-Json; if ($env:STEP -eq 'link' -and $r.success -eq $true -and $r.completed -eq $true -and $r.failed -eq 0) { exit 0 }; if ($env:STEP -eq 'export' -and $r.success -eq $true -and $r.xlsx_export.status -eq 'success' -and $r.priority_approval_xlsx_export.status -eq 'success') { exit 0 }; exit 1" 2>nul
 set "RESULT=%errorlevel%"
 if "%RESULT%"=="0" goto :show_result
 echo Step %STEP% returned an incomplete result.>>"%OUTPUT_FILE%"
