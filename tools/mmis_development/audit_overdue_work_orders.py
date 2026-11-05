@@ -5,7 +5,9 @@ import sqlite3
 import sys
 from collections.abc import Sequence
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from mmis_connector.auth import MMISClientError, MMISConfig, MMISSession
 from mmis_connector.overdue_work_orders import FIELDS, OverdueWorkOrderQuery
@@ -17,9 +19,21 @@ DATABASE_RELATIVE_PATH = Path("data/overdue_work_orders.db")
 DATABASE_PATH = Path(__file__).resolve().parents[2] / DATABASE_RELATIVE_PATH
 TABLE_NAME = "overdue_work_orders"
 DATABASE_FIELDS = (*FIELDS, "備註")
-USAGE = "python -m tools.mmis_development.audit_overdue_work_orders"
+USAGE = "python -m tools.mmis_development.audit_overdue_work_orders [--export-xlsx]"
 EXCLUDED_STATUSES = {"核簽中", "工單結案"}
 PERIODIC_LEVELS = ("2A", "3A")
+MAX_XLSX_CELL_LENGTH = 32767
+XLSX_COLUMN_WIDTHS = {
+    "車組(輛)": 10.6,
+    "檢修級別": 10.6,
+    "工單編號": 17.9,
+    "工單狀態": 15.8,
+    "人員": 8.1,
+    "檢修日期": 14.5,
+    "完工日期": 14.5,
+    "逾期天數": 10.6,
+    "備註": 40,
+}
 
 
 def replace_records(records: list[dict[str, str]], path: Path = DATABASE_PATH) -> int:
@@ -82,8 +96,56 @@ def annotate_periodic_records(
         ]
 
 
-def execute(args: Sequence[str]) -> dict[str, str | int | bool | list[dict[str, str]]]:
-    if args:
+def export_snapshot_xlsx(
+    database_path: Path, expected_records: int, *,
+    output_directory: Path | None = None, now: datetime | None = None,
+) -> dict[str, Any]:
+    try:
+        from openpyxl.utils.exceptions import IllegalCharacterError
+
+        from ._unclosed_ab_xlsx import (
+            XlsxExportError, build_workbook, configured_output_directory,
+            read_snapshot, save_workbook,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name == "openpyxl":
+            raise MMISClientError("未安裝 openpyxl，無法匯出 XLSX") from exc
+        raise
+
+    directory = output_directory if output_directory is not None else configured_output_directory()
+    if not directory.is_dir():
+        raise XlsxExportError("XLSX 輸出資料夾不存在")
+    rows = read_snapshot(database_path, TABLE_NAME, DATABASE_FIELDS)
+    if len(rows) != expected_records:
+        raise XlsxExportError("本次 SQLite 筆數與 XLSX 匯出筆數不符")
+    if any(
+        isinstance(value, str) and len(value) > MAX_XLSX_CELL_LENGTH
+        for row in rows for value in row
+    ):
+        raise XlsxExportError("SQLite 文字超過 Excel 單一儲存格長度上限")
+    sort_indices = tuple(
+        DATABASE_FIELDS.index(field) for field in ("檢修級別", "逾期天數", "車組(輛)")
+    )
+    rows.sort(key=lambda row: tuple(row[index] for index in sort_indices))
+    try:
+        workbook = build_workbook(
+            rows, DATABASE_FIELDS, frozenset(), column_widths=XLSX_COLUMN_WIDTHS,
+        )
+    except IllegalCharacterError as exc:
+        raise XlsxExportError("SQLite 文字含有 Excel 不支援的控制字元") from exc
+    sheet = workbook.active
+    sheet.title = "工單逾期查詢"
+    sheet.row_dimensions[1].height = 16
+    for row_number in range(2, sheet.max_row + 1):
+        sheet.row_dimensions[row_number].height = 15.5
+    return save_workbook(
+        workbook, directory, file_prefix="工單逾期查詢_程式產生",
+        records_exported=len(rows), columns_exported=len(DATABASE_FIELDS), now=now,
+    )
+
+
+def execute(args: Sequence[str]) -> dict[str, Any]:
+    if list(args) not in ([], ["--export-xlsx"]):
         raise MMISClientError(f"用法: {USAGE}")
     session = MMISSession(MMISConfig.from_env())
     records = OverdueWorkOrderQuery(session).run()
@@ -91,12 +153,15 @@ def execute(args: Sequence[str]) -> dict[str, str | int | bool | list[dict[str, 
     noted_records = annotate_periodic_records(
         CompletePeriodicInspectionWorkOrderStatusQuery(session), DATABASE_PATH
     )
-    return {
+    result = {
         "success": True,
         "count": count,
         "database_path": DATABASE_RELATIVE_PATH.as_posix(),
         "noted_records": noted_records,
     }
+    if args:
+        result["xlsx_export"] = export_snapshot_xlsx(DATABASE_PATH, count)
+    return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -110,6 +175,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("Status: SUCCESS")
     print(f"Records found: {result['count']}")
     print(f"Database path: {result['database_path']}")
+    if "xlsx_export" in result:
+        print(f"Excel path: {result['xlsx_export']['output_file']}")
     print(json.dumps(result["noted_records"], ensure_ascii=False))
     return 0
 

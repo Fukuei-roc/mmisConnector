@@ -46,7 +46,7 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 | 查詢故障通報關聯的工單 | 輸入通報號；取得關聯的段檢修工單清單。 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` |
 | 查詢未處理故障通報 | 無需輸入；取得本段未處理故障通報清單。 | `python -m tools.mmis_development.query_unprocessed_fault_notices` |
 | 查詢未結案故障通報 | 無需輸入；取得新竹機務段 A、B 級未結案故障通報清單。 | `python -m tools.mmis_development.query_unclosed_fault_notices` |
-| 清查逾期工單（Audit Overdue Work Orders） | 讀取「工單逾期查詢」全部結果頁的指定八欄並重建 `data/overdue_work_orders.db`。接著依序查詢 2A／3A 主工單的子工單狀態；非「核簽中」或「工單結案」者以 `工作單(工作單狀態)` 填入「備註」，多筆以逗號連接。最後列印備註非空的完整資料列。 | `python -m tools.mmis_development.audit_overdue_work_orders` |
+| 清查逾期工單（Audit Overdue Work Orders） | 讀取「工單逾期查詢」全部結果頁的指定八欄並重建 `data/overdue_work_orders.db`。接著依序查詢 2A／3A 主工單的子工單狀態；非「核簽中」或「工單結案」者以 `工作單(工作單狀態)` 填入「備註」，多筆以逗號連接。最後列印備註非空的完整資料列。加上 `--export-xlsx` 時，再匯出完成備註更新的全部資料列與九欄。 | `python -m tools.mmis_development.audit_overdue_work_orders [--export-xlsx]` |
 | 自動處理 A/B 級未結案故障通報（開發階段） | 同步通報與結案檢查；符合條件時以 AI 填寫並儲存 MMIS 一般故障分析，ATP 三欄全空且未完成時也填寫 ATP 故障分析；已確認的寫入逐項記入本機備註。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices` |
 | 自動處理 A/B 級未結案故障通報並匯出 XLSX | 先執行同一套 MMIS 查詢與 SQLite 全量同步，完整成功後再從本次更新的資料庫匯出 XLSX。 | `python -m tools.mmis_development.auto_process_unclosed_ab_fault_notices --export-xlsx` |
 | 查詢臨時檢修工單明細 | 輸入工作單號；取得工單基本資料、已勾稽故障通報、維修程序概況及試車報告。 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C1-41264` |
@@ -61,6 +61,18 @@ Authentication、Maximo event、parser、validation 與 domain logic 只能存�
 
 「刪除未派工的日檢工單」與「依工作單號勾稽故障通報」會修改 MMIS 資料。只能在明確核准的受控 Live 驗證或人工單筆操作中使用；若
 結果不明，先人工確認，不得直接重送。
+
+逾期工單的 `--export-xlsx` 會在查詢與備註更新成功提交後，從 SQLite 匯出
+全部工單，包含備註空白的資料列。Excel 依「檢修級別」→「逾期天數」→「車組(輛)」
+逐欄按文字 A–Z 升冪排序，因此逾期天數 `10` 排在 `2` 前；SQLite 原始順序不變。
+輸出資料夾使用專案 `.env` 的
+`UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR`，必須是已存在的絕對路徑。檔名為
+`工單逾期查詢_程式產生MMDD.xlsx`，日期採台北時間；同名檔已存在時依序加上 `_2`、`_3`。
+Excel 使用 12pt 微軟正黑體，標題置中、資料靠左、垂直置中，備註自動換行。
+第 1 列高度固定為 16，其餘資料列固定為 15.5，包含多行備註的資料列。
+欄寬依序為「車組(輛)」10.6、「檢修級別」10.6、「工單編號」17.9、「工單狀態」15.8、
+「人員」8.1、「檢修日期」14.5、「完工日期」14.5、「逾期天數」10.6、「備註」40。
+成功時 stdout 顯示 `Excel path`；匯出失敗時回傳非零結束碼，已完成的 SQLite 快照仍保留。
 
 自動處理 A/B 級未結案故障通報先執行第一階段 snapshot。它在
 `data/unclosed_ab_fault_notices.db` 建立 16 欄的 `unclosed_ab_fault_notices` 資料表，
