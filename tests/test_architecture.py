@@ -56,6 +56,7 @@ def test_auto_link_has_explicit_reusable_component_dependencies() -> None:
         "daily_inspection.query",
         "daily_inspection.reader",
         "fault_notices.query",
+        "run_logging",
     }
 
 
@@ -72,6 +73,7 @@ def test_auto_link_dependency_graph_does_not_reach_cli_or_subprocess() -> None:
         "events",
         "fault_notices.query",
         "parser",
+        "run_logging",
     }
     assert "cli" not in reachable
 
@@ -131,6 +133,7 @@ def test_every_production_module_is_classified() -> None:
         "periodic_inspection/query.py",
         "periodic_inspection/reader.py",
         "periodic_inspection/status.py",
+        "run_logging.py",
         "temporary_repair/__init__.py",
         "temporary_repair/reader.py",
     }

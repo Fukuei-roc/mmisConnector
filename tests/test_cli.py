@@ -1,4 +1,5 @@
 import json
+import logging
 
 import pytest
 
@@ -42,8 +43,9 @@ def test_production_cli_rejects_development_only_commands(command, capsys) -> No
 
 
 def test_auto_link_command_runs_orchestrator_with_one_client_and_store(
-    monkeypatch, capsys
+    monkeypatch, capsys, tmp_path
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     expected = {
         "success": True,
         "operation_name": "自動勾稽日檢未處理通報",
@@ -88,6 +90,11 @@ def test_auto_link_command_runs_orchestrator_with_one_client_and_store(
         "store_closed": True,
     }
     assert json.loads(capsys.readouterr().out) == expected
+    log_files = list(tmp_path.glob("logs/*/*/*.jsonl"))
+    assert len(log_files) == 1
+    events = [json.loads(line) for line in log_files[0].read_text(encoding="utf-8").splitlines()]
+    assert [event["event"] for event in events] == ["command_started"]
+    assert logging.getLogger("mmis_connector.auto_link").handlers == []
 
 
 def test_auto_link_command_rejects_parameters_before_loading_config(
@@ -108,3 +115,29 @@ def test_auto_link_command_rejects_parameters_before_loading_config(
     assert result["message"] == (
         f"用法: {cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND}"
     )
+
+
+def test_auto_link_command_logs_failure_without_unexpected_error_details(
+    monkeypatch, capsys, tmp_path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def fail_config():
+        raise RuntimeError("password=secret-value")
+
+    monkeypatch.setattr(cli.MMISConfig, "from_env", fail_config)
+
+    exit_code = cli.main([cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND])
+
+    assert exit_code == 1
+    assert json.loads(capsys.readouterr().out)["success"] is False
+    log_files = list(tmp_path.glob("logs/*/*/*.jsonl"))
+    assert len(log_files) == 1
+    log_text = log_files[0].read_text(encoding="utf-8")
+    events = [json.loads(line) for line in log_text.splitlines()]
+    assert [event["event"] for event in events] == [
+        "command_started", "command_failed",
+    ]
+    assert events[-1]["error_type"] == "RuntimeError"
+    assert "secret-value" not in log_text
+    assert logging.getLogger("mmis_connector.auto_link").handlers == []

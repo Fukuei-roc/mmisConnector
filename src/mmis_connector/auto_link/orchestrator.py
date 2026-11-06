@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+import logging
 import re
 from typing import Any, Protocol
 
@@ -12,18 +13,22 @@ from ..daily_inspection.linker import (
     normalize_fault_notice,
 )
 from ..daily_inspection.query import (
+    DEPOT,
+    WORK_ORDER_STATUS,
     DailyInspectionWorkOrderQuery,
     normalize_inspection_date,
     normalize_vehicle,
 )
 from ..daily_inspection.reader import DailyInspectionWorkOrderDetailReader
 from ..fault_notices.query import UnprocessedFaultNoticeQuery
+from ..run_logging import log_event
 from .store import AutoLinkStore
 
 
 OPERATION_NAME = "自動勾稽日檢未處理通報"
 GENERIC_QUERY_ERROR = "查詢發生未預期錯誤；詳細內容未儲存以避免洩漏敏感資料"
 GENERIC_LINK_ERROR = "勾稽發生未預期錯誤；需人工確認且程式不會自動重送"
+LOGGER = logging.getLogger("mmis_connector.auto_link")
 
 
 class _Runner(Protocol):
@@ -124,11 +129,21 @@ class AutoLinkUnprocessedFaultNotices:
             fault_notice = row["fault_notice_no"]
             if not isinstance(work_order, str) or not isinstance(fault_notice, str):
                 continue
+            log_event(
+                LOGGER, "link_reconciliation_started",
+                run_id=run_id, fault_notice_no=fault_notice, work_order_no=work_order,
+            )
             try:
                 result = self.detail_reader.run(work_order)
-            except Exception:
+            except Exception as exc:
+                log_event(
+                    LOGGER, "link_reconciliation_failed",
+                    run_id=run_id, fault_notice_no=fault_notice,
+                    work_order_no=work_order, error_type=type(exc).__name__,
+                    message=_safe_error_message(exc, link=True),
+                )
                 continue
-            if (
+            confirmed = (
                 result.get("success") is True
                 and result.get("work_order") == work_order
                 and isinstance(result.get("records"), list)
@@ -138,16 +153,24 @@ class AutoLinkUnprocessedFaultNotices:
                     and record.get("故障通報號") == fault_notice
                     for record in result["records"]
                 )
-            ):
+            )
+            if confirmed:
                 self.store.set_status(
                     run_id, int(row["id"]), "linked", message="唯讀核對確認勾稽成功"
                 )
+            log_event(
+                LOGGER, "link_reconciliation_result",
+                run_id=run_id, fault_notice_no=fault_notice,
+                work_order_no=work_order, confirmed=confirmed,
+            )
 
     def _load_source_if_needed(
         self, run_id: str, *, source_loaded: bool
     ) -> None:
         if source_loaded:
+            log_event(LOGGER, "source_reused", run_id=run_id)
             return
+        log_event(LOGGER, "source_query_started", run_id=run_id)
         result = self.source_query.run()
         records = result.get("records")
         count = result.get("count")
@@ -161,6 +184,7 @@ class AutoLinkUnprocessedFaultNotices:
         ):
             raise MMISClientError("本段未處理通報查詢結果格式不正確")
         self.store.import_source_records(run_id, query_name, records)
+        log_event(LOGGER, "source_query_completed", run_id=run_id, count=count)
 
     @staticmethod
     def _validated_source(row: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -174,8 +198,16 @@ class AutoLinkUnprocessedFaultNotices:
         return vehicle, occurrence_date, fault_notice
 
     def _query_work_order(
-        self, vehicle: str, occurrence_date: str
+        self, vehicle: str, occurrence_date: str, *,
+        run_id: str, fault_notice: str, source_index: int,
     ) -> WorkOrderSelection:
+        log_event(
+            LOGGER, "work_order_query_started",
+            run_id=run_id, fault_notice_no=fault_notice,
+            source_index=source_index, vehicle=vehicle,
+            date_condition=f">{occurrence_date}", depot=DEPOT,
+            work_order_status_filter=WORK_ORDER_STATUS,
+        )
         result = self.work_order_query.run(vehicle, f">{occurrence_date}")
         records = result.get("records")
         count = result.get("count")
@@ -186,10 +218,25 @@ class AutoLinkUnprocessedFaultNotices:
             or count != len(records)
         ):
             raise MMISClientError("日檢工單查詢結果格式不正確")
+        log_event(
+            LOGGER, "work_order_query_completed",
+            run_id=run_id, fault_notice_no=fault_notice,
+            source_index=source_index, count=count,
+            candidates=[
+                {
+                    "work_order_no": record.get("工作單"),
+                    "inspection_date": record.get("檢修日期"),
+                    "vehicle": record.get("車組/車號"),
+                    "status": record.get("工作單狀態"),
+                }
+                for record in records
+            ],
+        )
         return select_earliest_work_order(records, occurrence_date)
 
     def _process_row(self, run_id: str, row: Mapping[str, Any]) -> None:
         row_id = int(row["id"])
+        source_index = int(row["source_index"])
         self.store.begin_attempt(run_id, row_id)
         try:
             vehicle, occurrence_date, fault_notice = self._validated_source(row)
@@ -200,12 +247,29 @@ class AutoLinkUnprocessedFaultNotices:
                 "invalid_source_data",
                 message=_safe_error_message(exc, link=False),
             )
+            log_event(
+                LOGGER, "source_invalid", run_id=run_id,
+                source_index=source_index,
+                fault_notice_no=row.get("fault_notice_no"),
+                error_type=type(exc).__name__,
+                message=_safe_error_message(exc, link=False),
+            )
             return
+
+        log_event(
+            LOGGER, "source_validated", run_id=run_id,
+            source_index=source_index, fault_notice_no=fault_notice,
+            source_vehicle=row.get("vehicle"), query_vehicle=vehicle,
+            occurrence_date=occurrence_date,
+        )
 
         work_order_no = row.get("daily_inspection_work_order_no")
         if row.get("processing_status") != "work_order_selected":
             try:
-                selection = self._query_work_order(vehicle, occurrence_date)
+                selection = self._query_work_order(
+                    vehicle, occurrence_date, run_id=run_id,
+                    fault_notice=fault_notice, source_index=source_index,
+                )
             except Exception as exc:  # one query failure must not stop the batch
                 self.store.set_status(
                     run_id,
@@ -213,7 +277,19 @@ class AutoLinkUnprocessedFaultNotices:
                     "query_failed",
                     message=_safe_error_message(exc, link=False),
                 )
+                log_event(
+                    LOGGER, "work_order_query_failed",
+                    run_id=run_id, source_index=source_index,
+                    fault_notice_no=fault_notice, error_type=type(exc).__name__,
+                    message=_safe_error_message(exc, link=False),
+                )
                 return
+            log_event(
+                LOGGER, "work_order_selection",
+                run_id=run_id, source_index=source_index,
+                fault_notice_no=fault_notice, status=selection.status,
+                work_order_no=selection.work_order_no,
+            )
             if selection.work_order_no is None:
                 self.store.set_status(
                     run_id,
@@ -238,6 +314,11 @@ class AutoLinkUnprocessedFaultNotices:
                 "link_error",
                 message="已選擇工單的狀態缺少工作單號，未執行勾稽",
             )
+            log_event(
+                LOGGER, "link_failed", run_id=run_id,
+                source_index=source_index, fault_notice_no=fault_notice,
+                status="link_error", message="已選擇工單的狀態缺少工作單號，未執行勾稽",
+            )
             return
 
         self.store.set_status(
@@ -246,6 +327,11 @@ class AutoLinkUnprocessedFaultNotices:
             "linking",
             work_order_no=work_order_no,
             message="勾稽處理中",
+        )
+        log_event(
+            LOGGER, "link_started", run_id=run_id,
+            source_index=source_index, fault_notice_no=fault_notice,
+            work_order_no=work_order_no,
         )
         try:
             link_result = self.linker.run(work_order_no, fault_notice)
@@ -262,6 +348,12 @@ class AutoLinkUnprocessedFaultNotices:
                 work_order_no=work_order_no,
                 message=_safe_error_message(exc, link=True),
             )
+            log_event(
+                LOGGER, "link_failed", run_id=run_id,
+                source_index=source_index, fault_notice_no=fault_notice,
+                work_order_no=work_order_no, error_type=type(exc).__name__,
+                message=_safe_error_message(exc, link=True),
+            )
             return
         self.store.set_status(
             run_id,
@@ -270,9 +362,18 @@ class AutoLinkUnprocessedFaultNotices:
             work_order_no=work_order_no,
             message="勾稽成功",
         )
+        log_event(
+            LOGGER, "link_succeeded", run_id=run_id,
+            source_index=source_index, fault_notice_no=fault_notice,
+            work_order_no=work_order_no,
+        )
 
     def _run_locked(self) -> dict[str, Any]:
         prepared = self.store.prepare_run()
+        log_event(
+            LOGGER, "run_prepared", run_id=prepared.run_id,
+            resumed=prepared.resumed, source_loaded=prepared.source_loaded,
+        )
         self._load_source_if_needed(
             prepared.run_id, source_loaded=prepared.source_loaded
         )
@@ -283,6 +384,10 @@ class AutoLinkUnprocessedFaultNotices:
 
         completed = self.store.complete_if_settled(prepared.run_id)
         counts = self.store.summary(prepared.run_id)
+        log_event(
+            LOGGER, "run_completed", run_id=prepared.run_id,
+            completed=completed, counts=counts,
+        )
         failed = sum(
             counts[status]
             for status in (

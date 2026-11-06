@@ -10,6 +10,7 @@ from .auto_link.orchestrator import (
     AutoLinkUnprocessedFaultNotices,
 )
 from .auto_link.store import AutoLinkStore
+from .run_logging import command_log, log_event
 
 
 AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND = (
@@ -31,10 +32,27 @@ def _auto_link_unprocessed_fault_notices(
         raise MMISClientError(
             f"用法: {AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND}"
         )
-    config = MMISConfig.from_env()
-    client = MMISSession(config)
-    with AutoLinkStore() as store:
-        return AutoLinkUnprocessedFaultNotices(client, store).run()
+    with command_log(
+        AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND,
+        "mmis_connector.auto_link",
+    ) as logger:
+        log_event(logger, "command_started")
+        try:
+            config = MMISConfig.from_env()
+            client = MMISSession(config)
+            with AutoLinkStore() as store:
+                return AutoLinkUnprocessedFaultNotices(client, store).run()
+        except Exception as exc:
+            message = (
+                str(exc)
+                if isinstance(exc, MMISClientError)
+                else "發生未預期錯誤；已隱藏詳細內容以避免洩漏敏感資料"
+            )
+            log_event(
+                logger, "command_failed",
+                error_type=type(exc).__name__, message=message,
+            )
+            raise
 
 
 def _commands() -> dict[str, CommandHandler]:
