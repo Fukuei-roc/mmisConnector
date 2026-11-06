@@ -13,6 +13,7 @@
 | 故障通報 domain | `src/mmis_connector/fault_notices/` | `UnprocessedFaultNoticeQuery`, `UnclosedFaultNoticeQuery`, `FaultNoticeAnalysisReader`, `run` |
 | 日檢工單 domain | `src/mmis_connector/daily_inspection/` | `Query`, `Reader`, `Linker` |
 | Auto-link application | `src/mmis_connector/auto_link/` | `orchestrator`, `store`, `AutoLink` |
+| 正式 CLI 執行紀錄 | `src/mmis_connector/run_logging.py`、`logs/README.md` | `command_log`, `log_event`, `PROJECT_ROOT` |
 | 表格解析 | `src/mmis_connector/parser.py` | `parse_maximo_table`, `parse_*_page_info` |
 | 測試 | `tests/test_*.py` | 對應功能模組或共用層名稱 |
 | 新 MMIS 功能／已驗證操作 | `docs/development/mmis-feature-workflow.md` | `Query`, `Reader`, `Linker`, `MaximoEventClient`, `parse_` |

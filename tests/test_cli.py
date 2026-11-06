@@ -4,6 +4,7 @@ import logging
 import pytest
 
 from mmis_connector import cli
+from mmis_connector import run_logging
 
 
 DEVELOPMENT_ONLY_COMMANDS = (
@@ -46,6 +47,7 @@ def test_auto_link_command_runs_orchestrator_with_one_client_and_store(
     monkeypatch, capsys, tmp_path
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_logging, "PROJECT_ROOT", tmp_path)
     expected = {
         "success": True,
         "operation_name": "自動勾稽日檢未處理通報",
@@ -121,6 +123,7 @@ def test_auto_link_command_logs_failure_without_unexpected_error_details(
     monkeypatch, capsys, tmp_path,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_logging, "PROJECT_ROOT", tmp_path)
 
     def fail_config():
         raise RuntimeError("password=secret-value")

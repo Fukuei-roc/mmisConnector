@@ -4,6 +4,7 @@ import logging
 from mmis_connector.auto_link.orchestrator import AutoLinkUnprocessedFaultNotices
 from mmis_connector.auto_link.store import AutoLinkStore
 from mmis_connector.run_logging import command_log
+from mmis_connector import run_logging
 
 
 COMMAND = "auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders"
@@ -51,6 +52,7 @@ def test_no_match_log_captures_exact_query_and_empty_result_without_source_detai
     tmp_path, monkeypatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_logging, "PROJECT_ROOT", tmp_path)
     source_record = {
         "通報號": "1151104-51",
         "車組/車號": "EP731",
@@ -84,6 +86,7 @@ def test_no_match_log_captures_exact_query_and_empty_result_without_source_detai
 
 def test_link_log_records_safe_candidate_and_outcome(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_logging, "PROJECT_ROOT", tmp_path)
     source_record = {
         "通報號": "1151104-51",
         "車組/車號": "EP731",
@@ -117,3 +120,47 @@ def test_link_log_records_safe_candidate_and_outcome(tmp_path, monkeypatch) -> N
     log_text = path.read_text(encoding="utf-8")
     assert "secret" not in log_text
     assert logging.getLogger(LOGGER_NAME).handlers == []
+
+
+def test_log_path_stays_under_project_when_called_from_another_directory(
+    tmp_path, monkeypatch,
+) -> None:
+    project = tmp_path / "project"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setattr(run_logging, "PROJECT_ROOT", project)
+    monkeypatch.chdir(elsewhere)
+
+    with command_log(COMMAND, LOGGER_NAME) as logger:
+        run_logging.log_event(logger, "check")
+
+    files = list((project / "logs").glob("*/*/*.jsonl"))
+    assert len(files) == 1
+    assert json.loads(files[0].read_text(encoding="utf-8"))["event"] == "check"
+    assert not (elsewhere / "logs").exists()
+
+
+def test_log_write_failure_warns_once_without_sensitive_details(
+    tmp_path, monkeypatch, capsys,
+) -> None:
+    class BrokenStream:
+        def write(self, _line):
+            raise OSError("secret disk detail")
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(run_logging, "PROJECT_ROOT", tmp_path)
+    with command_log(COMMAND, LOGGER_NAME) as logger:
+        handler = logger.handlers[0]
+        stream = handler.stream
+        handler.stream = BrokenStream()
+        try:
+            run_logging.log_event(logger, "check", detail="secret payload")
+            run_logging.log_event(logger, "check", detail="secret payload")
+        finally:
+            handler.stream = stream
+
+    warning = capsys.readouterr().err
+    assert warning.count("紀錄可能不完整") == 1
+    assert "secret" not in warning

@@ -7,8 +7,27 @@ from datetime import UTC, datetime
 import json
 import logging
 from pathlib import Path
+import sys
 from typing import Iterator
 from uuid import uuid4
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+class _CommandFileHandler(logging.FileHandler):
+    def __init__(self, path: Path) -> None:
+        super().__init__(path, encoding="utf-8")
+        self._write_warning_sent = False
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        if self._write_warning_sent:
+            return
+        self._write_warning_sent = True
+        try:
+            sys.stderr.write("警告：執行 log 寫入失敗，紀錄可能不完整。\n")
+        except OSError:
+            pass
 
 
 def log_event(logger: logging.Logger, event: str, **fields: object) -> None:
@@ -32,10 +51,10 @@ def log_event(logger: logging.Logger, event: str, **fields: object) -> None:
 @contextmanager
 def command_log(command: str, logger_name: str) -> Iterator[logging.Logger]:
     now = datetime.now(UTC)
-    directory = Path("logs") / command / now.strftime("%Y-%m-%d")
+    directory = PROJECT_ROOT / "logs" / command / now.strftime("%Y-%m-%d")
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{now.strftime('%Y%m%dT%H%M%S%fZ')}-{uuid4().hex}.jsonl"
-    handler = logging.FileHandler(path, encoding="utf-8")
+    handler = _CommandFileHandler(path)
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger = logging.getLogger(logger_name)
     previous_level = logger.level

@@ -13,6 +13,7 @@
 | `events.py` | B：共用基礎設施 | 三個 MMIS service component 間接使用 app switching 與 event POST | 保留 |
 | `parser.py` | B：共用基礎設施 | Query／Reader／Linker 皆依賴動態表格、分頁與 controls parsing | 保留 |
 | `cli.py` | A：Production entry point | 只 dispatch auto-link production command | 保留 |
+| `run_logging.py` | B：共用執行紀錄基礎設施 | CLI 建立每次執行的 JSONL，orchestrator 寫入安全化事件 | 保留；供其他命令沿用分目錄紀錄規則 |
 | `fault_notices/__init__.py` | B：domain package boundary | 標示 fault-notice domain；不擴張 root public API | 保留 |
 | `fault_notices/query.py` | A：Auto-link 必要／共用 Query | Orchestrator 直接以 `UnprocessedFaultNoticeQuery` 載入 source snapshot；development tool 使用 `UnclosedFaultNoticeQuery` | 保留；兩者共用 app、saved-query 與分頁協定 |
 | `fault_notices/reader.py` | B：正式共用 Reader | Auto-link 不使用；development tool 呼叫 `FaultNoticeAnalysisReader` | 保留；封裝可重用的唯一篩選、明細導航、semantic parsing 與驗證，wrapper 不得實作 domain logic |

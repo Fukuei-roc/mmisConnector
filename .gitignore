@@ -9,7 +9,8 @@ dist/
 build/
 coverage/
 .cache/
-logs/
+/logs/*
+!/logs/README.md
 *.egg-info/
 __pycache__/
 .pytest_cache/
