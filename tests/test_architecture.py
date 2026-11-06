@@ -180,7 +180,26 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         }
     ]
 
-    assert len(tool_paths) == 22
+    required_tools = {
+        "audit_overdue_work_orders",
+        "auto_delete_duplicate_daily_inspection_work_orders",
+        "auto_process_unclosed_ab_fault_notices",
+        "delete_unassigned_daily_inspection_work_order",
+        "export_atp_fault_analysis_options",
+        "export_unclosed_ab_fault_notices_from_db",
+        "query_complete_periodic_inspection_work_order_status",
+        "query_daily_inspection_work_order_by_number_and_link_fault_notice",
+        "query_daily_inspection_work_order_details",
+        "query_daily_inspection_work_orders_by_vehicle_and_date",
+        "query_daily_inspection_work_orders_not_submitted_for_approval",
+        "query_fault_notice_full_detail",
+        "query_latest_periodic_inspection_work_order",
+        "query_periodic_inspection_work_order_details",
+        "query_temporary_repair_work_order_detail",
+        "query_unclosed_fault_notices",
+        "query_unprocessed_fault_notices",
+    }
+    assert required_tools == {path.stem for path in tool_paths}
     for tool_path in tool_paths:
         tree = ast.parse(tool_path.read_text(encoding="utf-8"))
         imported_modules = {

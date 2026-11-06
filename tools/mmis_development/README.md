@@ -1,6 +1,6 @@
 # MMIS 開發工具指令索引
 
-本頁列出 `tools/mmis_development/` 的 22 個可執行工具。從專案根目錄執行指令，先依根目錄 `README.md` 設定 MMIS 登入用的 `.env`。表格中的通報號、工作單號和車號都是可替換的範例值。
+本頁列出 `tools/mmis_development/` 的 17 個可執行工具。從專案根目錄執行指令，先依根目錄 `README.md` 設定 MMIS 登入用的 `.env`。表格中的通報號、工作單號和車號都是可替換的範例值。
 
 **讀表方式：**「輸入」只列必填命令列參數；「產出」分清終端輸出、本機檔案與 MMIS 寫入。`—` 表示沒有額外參數或檔案。除了表格標明的 SQLite、JSON、Excel 檔案，其餘查詢結果只顯示在終端，不會自動存檔。
 
@@ -15,10 +15,6 @@
 | 匯出既有 A/B 級資料 | `python -m tools.mmis_development.export_unclosed_ab_fault_notices_from_db` | — | 無；需已有 `data/unclosed_ab_fault_notices.db` | 終端 JSON；從現有 SQLite 產生 `AB級未處理故障通報_程式產生MMDD.xlsx` |
 | 查詢 A/B 級未結案清單 | `python -m tools.mmis_development.query_unclosed_fault_notices` | — | 無 | 終端 JSON：新竹機務段 A/B 級未結案通報 |
 | 查詢本段未處理清單 | `python -m tools.mmis_development.query_unprocessed_fault_notices` | — | 無 | 終端 JSON：本段未處理通報 |
-| 查詢段修工單 | `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` | — | 通報號 | 終端 JSON：關聯段檢修工單 |
-| 查詢 CA 查修工單 | `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` | — | 通報號 | 終端 JSON：關聯 CA 查修工單 |
-| 查詢一般故障分析 | `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` | — | 通報號 | 終端 JSON：事故現象、處理概況、故障原因、處理情形、改善對策 |
-| 查詢 ATP 故障分析 | `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` | — | 已勾選 ATP 故障的通報號 | 終端 JSON：故障要因、故障因子、故障項目 |
 | 匯出 ATP 分析選項 | `python -m tools.mmis_development.export_atp_fault_analysis_options 1151012-36` | — | 已勾選 ATP 故障的通報號 | 終端 JSON；完整時更新 `data/atp_fault_analysis_options.json`，部分失敗時寫入 `data/atp_fault_analysis_options.partial.json` |
 
 `auto_process_unclosed_ab_fault_notices` 每次都重新查詢並更新 SQLite。預設只對尚未完成一般故障分析的通報執行付費 AI 資料充分性檢查；需要時也會呼叫 AI 產生分析，再寫入 MMIS。`--check-analysis-readiness` 會擴大檢查範圍，增加 API 使用量。`--export-xlsx` 只在同步和處理成功後匯出兩份檔案：`AB級未處理故障通報_程式產生MMDD.xlsx`（含「待簽核工單」，共 10 欄）及 `優先簽核工單_程式產生MMDD.xlsx`。後者會查詢待簽核工單並依 `.env` 的 `MMIS_INSPECTION_GROUP_LEADER` 篩選。獨立的 `export_unclosed_ab_fault_notices_from_db` 只讀取既有 SQLite，只產生第一份 Excel，不重新查詢或修改 MMIS。
@@ -33,7 +29,6 @@
 | 查詢日檢完整明細 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` | — | 日檢工作單號 | 終端 JSON：基本資料、已勾稽通報、檢修記錄、重要事項、檢修人員及記錄完成狀態 |
 | 找出重複未派工工單 | `python -m tools.mmis_development.auto_delete_duplicate_daily_inspection_work_orders` | — | 無 | 終端顯示候選工單；重建 `data/auto_delete_duplicate_daily_inspection_work_orders.db`，標記較舊的重複工單 |
 | 依車號和日期找工單 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | — | 車號、檢修日期條件；PowerShell 中以引號包住 `>` | 終端 JSON：符合條件的日檢工單清單 |
-| 查詢工單已勾稽通報 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | — | 日檢工作單號 | 終端 JSON：已勾稽故障通報 |
 | 勾稽故障通報 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | — | 日檢工作單號、通報號 | 寫入 MMIS 工單與通報的關聯；終端 JSON 回報確認結果 |
 | 取消未派工工單 | `python -m tools.mmis_development.delete_unassigned_daily_inspection_work_order 115-1A-70048` | — | 日檢工作單號 | 符合「執行中未派工」時，以「重複開單」為理由取消 MMIS 工單；終端 JSON 回報確認結果 |
 

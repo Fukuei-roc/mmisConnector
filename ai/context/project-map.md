@@ -1,6 +1,6 @@
 # 專案地圖
 
-狀態：已更新（2026-11-05）。
+狀態：已更新（2026-11-06）。
 
 在專案導入（intake）時填寫這份文件。
 
@@ -35,14 +35,9 @@
 |---|---|---|
 | `python -m tools.mmis_development.query_unprocessed_fault_notices` | Development tool：查詢本段未處理通報 | 需先設定 `.env` |
 | `python -m tools.mmis_development.query_unclosed_fault_notices` | Development tool：查詢新竹機務段 A/B 級未結案故障通報 | 零參數、只輸出 stdout JSON |
-| `python -m tools.mmis_development.query_fault_notice_analysis 1150828-12` | Development tool：依通報號讀取故障分析五欄 | 唯讀、只輸出 stdout JSON |
-| `python -m tools.mmis_development.query_atp_fault_analysis_linked_to_fault_notice 1150210-36` | Development tool：依通報號讀取 ATP 故障分析三欄 | 唯讀；未勾選 ATP 時輸出 JSON 錯誤 |
-| `python -m tools.mmis_development.query_work_orders_linked_to_fault_notice 1150910-14` | Development tool：依通報號讀取關聯段檢修工單 | 唯讀、跨頁並依工作單去重，只輸出 stdout JSON |
-| `python -m tools.mmis_development.query_repair_work_orders_linked_to_fault_notice 1150930-09` | Development tool：依通報號讀取 CA 查修工單十欄 | 唯讀、跨頁並依工作單去重，只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150210-36` | Development tool：整合基本資料、ATP 標記、段修與 CA 工單、故障分析及故障分析素材 | 唯讀；未加旗標時不呼叫 OpenAI；單筆工單查詢失敗保留錯誤項目 |
 | `python -m tools.mmis_development.query_fault_notice_full_detail 1150210-36 --ai-analysis` | 在完整通報 JSON 上產生三欄故障檢討 | 唯讀 MMIS；明確啟用付費 OpenAI API，將「故障分析」置於最後 |
 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | Development tool：依車號與日期查詢日檢工單 | 需先設定 `.env` |
-| `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | Development tool：依工作單號讀取故障通報 | 只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` | Development tool：依工作單號查詢日檢工單明細 | 唯讀、只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_periodic_inspection_work_order_details 115-2A-69254-001` | Development tool：查詢定期檢修工單備註非空的檢修記錄 | 唯讀、只輸出 stdout JSON |
 | `python -m tools.mmis_development.query_temporary_repair_work_order_detail 115-C2-41266` | Development tool：查詢臨時檢修工單明細；先查預設清單，0 筆才切所有記錄；讀取基本資料、已勾稽故障通報、維修程序概況與試車報告 | 唯讀、只輸出 stdout JSON |

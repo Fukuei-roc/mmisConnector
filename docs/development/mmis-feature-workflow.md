@@ -76,7 +76,7 @@ MMISSession
 | 正式批次編排 | `auto_link.orchestrator.AutoLinkUnprocessedFaultNotices` | shared session、車號正規化、唯一工單、fail-closed、JSON summary |
 
 這些 module 是 production implementation，不是因為最初由部分功能驗證而產生就視為
-舊程式。五個單一操作 development tools 是它們的人工入口，並同時提供 debugging、行為確認、
+舊程式。下列單一操作 development tools 是它們的人工入口，並同時提供 debugging、行為確認、
 受控 Live 驗證與單筆操作價值。
 
 | Development tool | Tool 建構的正式元件 | 與 auto-link 的關係 |
@@ -84,7 +84,6 @@ MMISSession
 | `tools.mmis_development.query_unprocessed_fault_notices` | `UnprocessedFaultNoticeQuery` | Auto-link 直接重用同一 class，不呼叫 tool |
 | `tools.mmis_development.query_unclosed_fault_notices` | `UnclosedFaultNoticeQuery` | 獨立唯讀診斷操作；不由 Auto-link 呼叫 |
 | `tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date` | `DailyInspectionWorkOrderQuery` | Auto-link 直接重用同一 class，不呼叫 tool |
-| `tools.mmis_development.query_daily_inspection_work_order_by_number` | `DailyInspectionWorkOrderDetailReader` | Auto-link 的 Linker 間接重用 Reader，不呼叫 tool |
 | `tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice` | `DailyInspectionWorkOrderFaultNoticeLinker` | Auto-link 直接重用同一 class，不呼叫 tool |
 
 ## Reference 與 evidence 的存放規則

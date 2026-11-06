@@ -180,7 +180,7 @@ HTTP／Maximo event 行為確認、debugging、Production component 驗證、受
 | 查詢未處理故障通報 | 驗證 saved query、table parsing 與 pagination | `python -m tools.mmis_development.query_unprocessed_fault_notices` | 唯讀 |
 | 查詢未結案故障通報 | 以固定新竹機務段、A/B 級條件輸出完整分頁 JSON | `python -m tools.mmis_development.query_unclosed_fault_notices` | 唯讀 |
 | 依車號與日期查詢日檢工單 | 驗證 filter、固定狀態與日期條件 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | 唯讀 |
-| 依工作單號讀取明細 | 驗證唯一工單與故障通報表格 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number 115-1A-70048` | 唯讀 |
+| 依工作單號讀取明細 | 驗證唯一工單與已勾稽故障通報 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-70048` | 唯讀 |
 | 依工作單號勾稽故障通報 | 驗證 mutation 與結果確認 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | **會修改資料** |
 
 最後一項只能在明確核准的受控 Live 驗證或人工單筆操作中使用。若 mutation 結果不明，
