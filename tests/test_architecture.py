@@ -104,6 +104,7 @@ def test_every_production_module_is_classified() -> None:
         "auto_link/__init__.py",
         "auto_link/orchestrator.py",
         "auto_link/store.py",
+        "auto_link/xlsx.py",
         "cli.py",
         "daily_inspection/__init__.py",
         "daily_inspection/cancel.py",

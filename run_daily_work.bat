@@ -5,7 +5,7 @@ pushd "%~dp0" || exit /b 1
 set "OUTPUT_FILE=%TEMP%\mmis-daily-%RANDOM%-%RANDOM%.log"
 
 set "STEP=link"
-call :run python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders
+call :run python -m mmis_connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders --export-xlsx
 if errorlevel 1 goto :finish
 
 set "STEP=not_submitted"

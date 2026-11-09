@@ -28,9 +28,9 @@ def _configure_stdio() -> None:
 def _auto_link_unprocessed_fault_notices(
     args: Sequence[str],
 ) -> dict[str, Any]:
-    if args:
+    if list(args) not in ([], ["--export-xlsx"]):
         raise MMISClientError(
-            f"用法: {AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND}"
+            f"用法: {AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND} [--export-xlsx]"
         )
     with command_log(
         AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND,
@@ -41,7 +41,12 @@ def _auto_link_unprocessed_fault_notices(
             config = MMISConfig.from_env()
             client = MMISSession(config)
             with AutoLinkStore() as store:
-                return AutoLinkUnprocessedFaultNotices(client, store).run()
+                result = AutoLinkUnprocessedFaultNotices(client, store).run()
+            if "--export-xlsx" in args and result.get("success") is True:
+                from .auto_link.xlsx import export_xlsx
+
+                result["xlsx_export"] = export_xlsx()
+            return result
         except Exception as exc:
             message = (
                 str(exc)

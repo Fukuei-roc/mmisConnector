@@ -115,8 +115,39 @@ def test_auto_link_command_rejects_parameters_before_loading_config(
     assert exit_code == 1
     assert result["error"] == "MMISClientError"
     assert result["message"] == (
-        f"用法: {cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND}"
+        f"用法: {cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND} [--export-xlsx]"
     )
+
+
+def test_auto_link_xlsx_runs_after_successful_orchestrator(monkeypatch, capsys, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_logging, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(cli.MMISConfig, "from_env", lambda: object())
+    monkeypatch.setattr(cli, "MMISSession", lambda _: object())
+
+    class FakeStore:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    class FakeOrchestrator:
+        def __init__(self, *_):
+            pass
+
+        def run(self):
+            return {"success": True, "total": 2}
+
+    monkeypatch.setattr(cli, "AutoLinkStore", FakeStore)
+    monkeypatch.setattr(cli, "AutoLinkUnprocessedFaultNotices", FakeOrchestrator)
+    from mmis_connector.auto_link import xlsx
+    monkeypatch.setattr(xlsx, "export_xlsx", lambda: {"output_file": "report.xlsx"})
+
+    assert cli.main([cli.AUTO_LINK_UNPROCESSED_FAULT_NOTICES_COMMAND, "--export-xlsx"]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "success": True, "total": 2, "xlsx_export": {"output_file": "report.xlsx"}
+    }
 
 
 def test_auto_link_command_logs_failure_without_unexpected_error_details(

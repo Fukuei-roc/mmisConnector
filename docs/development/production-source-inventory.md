@@ -37,6 +37,7 @@
 | `auto_link/__init__.py` | B：application package boundary | 標示 auto-link application；不擴張 root public API | 保留 |
 | `auto_link/orchestrator.py` | A：Production application | 正式 orchestrator 與 business rules | 保留 |
 | `auto_link/store.py` | A：Auto-link 必要 | Orchestrator 直接使用 SQLite batch state | 保留 |
+| `auto_link/xlsx.py` | A：Production output | 唯讀 SQLite 結果表並匯出 Excel | 保留 |
 
 結論：目前沒有 C 類（只供 development tools 使用）的 source module，也沒有 Recorder、
 standalone script、argument parser 或 debug output 混在 production service modules 中。

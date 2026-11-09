@@ -161,7 +161,11 @@ python -m mmis_connector `
 mmis-connector auto-link-unprocessed-fault-notices-to-daily-inspection-work-orders
 ```
 
-此 command 不接受額外參數。成功與失敗都輸出 UTF-8 JSON；成功 exit code 為 `0`，
+可加 `--export-xlsx`，在本次勾稽流程成功後將 SQLite `fault_notices` 的結果表匯出至
+`.env` 的 `UNCLOSED_AB_FAULT_NOTICES_XLSX_DIR`。檔名為
+`未處理故障通報日檢勾稽_程式產生MMDD.xlsx`；同名檔已存在時會加上序號。
+Excel 不含「查詢時間」欄，共 10 欄；「ATP故障」顯示為 `Y` 或 `N`。
+不加參數時維持原行為。成功與失敗都輸出 UTF-8 JSON；成功 exit code 為 `0`，
 參數、設定或執行錯誤的 exit code 為 `1`。個別批次資料列可能需要人工處理，因此
 不能只看 process exit code；也要檢查 summary 的 `completed`、`failed`、
 `ambiguous_work_order`、`link_error` 與 `manual_review_required`。
