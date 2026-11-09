@@ -1,4 +1,4 @@
-"""Collect the unassigned 1A work orders for a later duplicate review step."""
+"""Find and cancel duplicate unassigned 1A work orders."""
 from __future__ import annotations
 
 import sqlite3
@@ -11,6 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from mmis_connector.auth import MMISClientError, MMISConfig, MMISSession
+from mmis_connector.daily_inspection.cancel import DailyInspectionWorkOrderCanceller
 from mmis_connector.daily_inspection.unassigned import FIELDS, UnassignedDailyInspectionWorkOrderQuery
 from mmis_connector.daily_inspection.reader import (
     DailyInspectionWorkOrderDetailReader,
@@ -21,6 +22,7 @@ DATABASE_RELATIVE_PATH = Path("data/auto_delete_duplicate_daily_inspection_work_
 DATABASE_PATH = Path(__file__).resolve().parents[2] / DATABASE_RELATIVE_PATH
 TABLE = "daily_inspection_work_orders"
 PENDING_CANCELLATION = "待工單取消"
+CANCELLED = "已取消工單"
 NO_DUPLICATE = "無重複"
 OPENING_DATE_FORMAT = "%Y/%m/%d %H:%M"
 
@@ -166,6 +168,39 @@ def update_duplicate_work_orders(
     )
 
 
+def cancel_pending_work_orders(
+    path: Path,
+    cancel: Callable[[str], dict[str, object]],
+) -> tuple[str, ...]:
+    with closing(sqlite3.connect(path)) as connection:
+        work_orders = [row[0] for row in connection.execute(
+            f'SELECT "工作單" FROM {TABLE} WHERE "執行結果" = ? ORDER BY rowid',
+            (PENDING_CANCELLATION,),
+        )]
+        cancelled: list[str] = []
+        for work_order in work_orders:
+            try:
+                result = cancel(work_order)
+            except MMISClientError as exc:
+                raise MMISClientError(
+                    f"工單 {work_order} 取消失敗或結果不明，請人工確認；程式未繼續處理"
+                ) from exc
+            if (result.get("success") is not True
+                    or result.get("工作單") != work_order
+                    or result.get("工作單狀態") != "工單取消"):
+                raise MMISClientError(f"工單 {work_order} 取消結果未通過確認，請人工確認")
+            with connection:
+                updated = connection.execute(
+                    f'UPDATE {TABLE} SET "執行結果" = ? '
+                    'WHERE "工作單" = ? AND "執行結果" = ?',
+                    (CANCELLED, work_order, PENDING_CANCELLATION),
+                ).rowcount
+                if updated != 1:
+                    raise MMISClientError(f"工單 {work_order} 的 SQLite 狀態已變更，請人工確認")
+            cancelled.append(work_order)
+        return tuple(cancelled)
+
+
 def main(argv: list[str] | None = None) -> int:
     if (sys.argv[1:] if argv is None else argv):
         print("Error: this command accepts no arguments", file=sys.stderr)
@@ -178,6 +213,13 @@ def main(argv: list[str] | None = None) -> int:
             DATABASE_PATH,
             lambda work_order: query_opening_date(client, work_order),
         )
+        cancelled = cancel_pending_work_orders(
+            DATABASE_PATH,
+            DailyInspectionWorkOrderCanceller(client).run,
+        )
+    except MMISClientError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     except Exception as exc:  # noqa: BLE001
         print(f"Error: {type(exc).__name__}", file=sys.stderr)
         return 1
@@ -185,8 +227,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Duplicate vehicle groups: {result.duplicate_groups}")
     print(f"Opening dates queried: {result.dates_written}")
     print(f"Cancellation candidates: {len(result.cancellation_orders)}")
-    for work_order in result.cancellation_orders:
-        print(f"Work order pending cancellation: {work_order}")
+    print(f"Work orders cancelled: {len(cancelled)}")
+    if result.duplicate_groups == 0:
+        print("未發現重複的未派工日檢工單")
+    else:
+        vehicles_by_order = {record["工作單"]: record["車組/車號"] for record in records}
+        for work_order in cancelled:
+            print(f"已刪除的車組/車號：{vehicles_by_order[work_order]}，工作單：{work_order}")
     print(f"Incomplete vehicle groups: {len(result.incomplete_groups)}")
     print(f"Ambiguous vehicle groups: {len(result.ambiguous_groups)}")
     print(f"Database path: {DATABASE_RELATIVE_PATH.as_posix()}")

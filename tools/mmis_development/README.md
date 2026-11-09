@@ -27,14 +27,14 @@
 |---|---|---|---|---|
 | 清查未送簽核工單 | `python -m tools.mmis_development.query_daily_inspection_work_orders_not_submitted_for_approval` | `--export-xlsx`：另產生兩份 Excel | 無 | 終端顯示筆數及路徑；重建 `data/daily_inspection_work_orders_not_submitted_for_approval.db`，標記需通知檢車室的工單 |
 | 查詢日檢完整明細 | `python -m tools.mmis_development.query_daily_inspection_work_order_details 115-1A-71815` | — | 日檢工作單號 | 終端 JSON：基本資料、已勾稽通報、檢修記錄、重要事項、檢修人員及記錄完成狀態 |
-| 找出重複未派工工單 | `python -m tools.mmis_development.auto_delete_duplicate_daily_inspection_work_orders` | — | 無 | 終端顯示候選工單；重建 `data/auto_delete_duplicate_daily_inspection_work_orders.db`，單筆車號標記「無重複」，較舊的重複工單標記「待工單取消」 |
+| 取消重複未派工工單 | `python -m tools.mmis_development.auto_delete_duplicate_daily_inspection_work_orders` | — | 無 | 重建 `data/auto_delete_duplicate_daily_inspection_work_orders.db`；較舊的重複工單標記「待工單取消」後依序取消，確認成功的列改為「已取消工單」；終端顯示處理筆數，無重複時印出「未發現重複的未派工日檢工單」，取消成功時逐筆印出車組/車號及工作單 |
 | 依車號和日期找工單 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | — | 車號、檢修日期條件；PowerShell 中以引號包住 `>` | 終端 JSON：符合條件的日檢工單清單 |
 | 勾稽故障通報 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | — | 日檢工作單號、通報號 | 寫入 MMIS 工單與通報的關聯；終端 JSON 回報確認結果 |
 | 取消未派工工單 | `python -m tools.mmis_development.delete_unassigned_daily_inspection_work_order 115-1A-70048` | — | 日檢工作單號 | 符合「執行中未派工」時，以「重複開單」為理由取消 MMIS 工單；終端 JSON 回報確認結果 |
 
-未送簽核清查的 `--export-xlsx` 會產生 `檢車室未填檢修人員日檢工單_程式產生MMDD.xlsx` 和 `未簽核日檢工單清查_程式產生MMDD.xlsx`。第二份收錄未出現在第一份的其他快照資料。重複未派工工具只標記候選，不會取消 MMIS 工單。
+未送簽核清查的 `--export-xlsx` 會產生 `檢車室未填檢修人員日檢工單_程式產生MMDD.xlsx` 和 `未簽核日檢工單清查_程式產生MMDD.xlsx`。第二份收錄未出現在第一份的其他快照資料。重複未派工工具會修改 MMIS；如果取消結果不明，整批停止，資料庫中的待取消列須人工確認。
 
-「勾稽故障通報」和「取消未派工工單」會修改 MMIS。只在明確核准的受控 Live 驗證或人工單筆操作中執行；如果寫入結果不明，先人工確認，不要直接重送。
+「勾稽故障通報」、「取消重複未派工工單」和「取消未派工工單」會修改 MMIS。只在明確核准的受控 Live 驗證或人工操作中執行；如果寫入結果不明，先人工確認，不要直接重送。
 
 ## 定期檢修工單（2A／3A）
 

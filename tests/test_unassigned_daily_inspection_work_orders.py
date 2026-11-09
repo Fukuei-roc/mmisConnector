@@ -6,8 +6,11 @@ import pytest
 
 from mmis_connector.auth import MMISClientError, PageState
 from mmis_connector.daily_inspection.unassigned import UnassignedDailyInspectionWorkOrderQuery
+from tools.mmis_development import auto_delete_duplicate_daily_inspection_work_orders as auto_delete
 from tools.mmis_development.auto_delete_duplicate_daily_inspection_work_orders import (
+    CANCELLED,
     PENDING_CANCELLATION,
+    cancel_pending_work_orders,
     replace_records,
     update_duplicate_work_orders,
 )
@@ -238,3 +241,144 @@ def test_unexpected_reader_error_is_not_treated_as_incomplete_data(tmp_path: Pat
 
     with pytest.raises(RuntimeError, match="programming error"):
         update_duplicate_work_orders(db, read_detail)
+
+
+def test_cancel_pending_orders_updates_each_verified_order_in_row_order(tmp_path: Path) -> None:
+    db = tmp_path / "cancel.db"
+    replace_records([
+        {"車組/車號": "EMU929", "工作單": order, "預計檢修(進廠)日": "2026/11/01"}
+        for order in ("A-2", "A-1", "A-3")
+    ], db)
+    with sqlite3.connect(db) as connection:
+        connection.executemany(
+            'UPDATE daily_inspection_work_orders SET "執行結果" = ? WHERE "工作單" = ?',
+            [(PENDING_CANCELLATION, "A-2"), (PENDING_CANCELLATION, "A-1")],
+        )
+    called = []
+
+    def cancel(order: str) -> dict[str, object]:
+        called.append(order)
+        return {"success": True, "工作單": order, "工作單狀態": "工單取消"}
+
+    assert cancel_pending_work_orders(db, cancel) == ("A-2", "A-1")
+    assert called == ["A-2", "A-1"]
+    assert cancel_pending_work_orders(db, cancel) == ()
+    with sqlite3.connect(db) as connection:
+        rows = connection.execute(
+            'SELECT "工作單", "執行結果" FROM daily_inspection_work_orders ORDER BY rowid'
+        ).fetchall()
+    assert rows == [("A-2", CANCELLED), ("A-1", CANCELLED), ("A-3", "")]
+
+
+def test_cancel_failure_stops_batch_and_keeps_unconfirmed_rows_pending(tmp_path: Path) -> None:
+    db = tmp_path / "failure.db"
+    replace_records([
+        {"車組/車號": "EMU929", "工作單": order, "預計檢修(進廠)日": "2026/11/01"}
+        for order in ("A-1", "A-2", "A-3")
+    ], db)
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            'UPDATE daily_inspection_work_orders SET "執行結果" = ?',
+            (PENDING_CANCELLATION,),
+        )
+    called = []
+
+    def cancel(order: str) -> dict[str, object]:
+        called.append(order)
+        if order == "A-2":
+            raise MMISClientError("工單取消結果不明")
+        return {"success": True, "工作單": order, "工作單狀態": "工單取消"}
+
+    with pytest.raises(MMISClientError, match="工單 A-2 取消失敗或結果不明"):
+        cancel_pending_work_orders(db, cancel)
+    assert called == ["A-1", "A-2"]
+    with sqlite3.connect(db) as connection:
+        states = [row[0] for row in connection.execute(
+            'SELECT "執行結果" FROM daily_inspection_work_orders ORDER BY rowid'
+        )]
+    assert states == [CANCELLED, PENDING_CANCELLATION, PENDING_CANCELLATION]
+
+
+def test_unverified_cancel_result_does_not_mark_order_cancelled(tmp_path: Path) -> None:
+    db = tmp_path / "unverified.db"
+    replace_records([{"車組/車號": "EMU929", "工作單": "A-1",
+                      "預計檢修(進廠)日": "2026/11/01"}], db)
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            'UPDATE daily_inspection_work_orders SET "執行結果" = ?',
+            (PENDING_CANCELLATION,),
+        )
+    with pytest.raises(MMISClientError, match="未通過確認"):
+        cancel_pending_work_orders(
+            db, lambda _: {"success": True, "工作單": "different", "工作單狀態": "工單取消"}
+        )
+    with sqlite3.connect(db) as connection:
+        assert connection.execute(
+            'SELECT "執行結果" FROM daily_inspection_work_orders'
+        ).fetchone()[0] == PENDING_CANCELLATION
+
+
+def test_command_reports_no_duplicate_work_orders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "no-duplicates.db"
+    records = [{"車組/車號": "EMU700", "工作單": "A-1",
+                "預計檢修(進廠)日": "2026/11/01"}]
+    monkeypatch.setattr(auto_delete, "DATABASE_PATH", db)
+    monkeypatch.setattr(auto_delete, "replace_records", lambda rows: replace_records(rows, db))
+    monkeypatch.setattr(auto_delete.MMISConfig, "from_env", lambda: object())
+    monkeypatch.setattr(auto_delete, "MMISSession", lambda _: object())
+    monkeypatch.setattr(
+        auto_delete, "UnassignedDailyInspectionWorkOrderQuery",
+        lambda _: SimpleNamespace(run=lambda: records),
+    )
+    monkeypatch.setattr(
+        auto_delete, "DailyInspectionWorkOrderCanceller",
+        lambda _: SimpleNamespace(run=lambda order: pytest.fail(f"unexpected cancel: {order}")),
+    )
+
+    assert auto_delete.main([]) == 0
+
+    output = capsys.readouterr().out
+    assert "未發現重複的未派工日檢工單" in output
+    assert "已刪除的車組/車號" not in output
+
+
+def test_command_reports_vehicle_and_work_order_after_cancellation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "duplicates.db"
+    records = [
+        {"車組/車號": "EMU929", "工作單": "A-1", "預計檢修(進廠)日": "2026/11/01"},
+        {"車組/車號": "EMU929", "工作單": "A-2", "預計檢修(進廠)日": "2026/11/02"},
+    ]
+    monkeypatch.setattr(auto_delete, "DATABASE_PATH", db)
+    monkeypatch.setattr(auto_delete, "replace_records", lambda rows: replace_records(rows, db))
+    monkeypatch.setattr(auto_delete.MMISConfig, "from_env", lambda: object())
+    monkeypatch.setattr(auto_delete, "MMISSession", lambda _: object())
+    monkeypatch.setattr(
+        auto_delete, "UnassignedDailyInspectionWorkOrderQuery",
+        lambda _: SimpleNamespace(run=lambda: records),
+    )
+    monkeypatch.setattr(auto_delete, "query_opening_date", lambda _, order: {
+        "工作單": order, "車組/車號": "EMU929",
+        "開單日期": "2026/11/01 08:00" if order == "A-1" else "2026/11/02 08:00",
+    })
+    monkeypatch.setattr(
+        auto_delete, "DailyInspectionWorkOrderCanceller",
+        lambda _: SimpleNamespace(run=lambda order: {
+            "success": True, "工作單": order, "工作單狀態": "工單取消",
+        }),
+    )
+
+    assert auto_delete.main([]) == 0
+
+    output = capsys.readouterr().out
+    assert "已刪除的車組/車號：EMU929，工作單：A-1" in output
+    assert "未發現重複的未派工日檢工單" not in output
+    with sqlite3.connect(db) as connection:
+        state = connection.execute(
+            'SELECT "執行結果" FROM daily_inspection_work_orders WHERE "工作單" = ?',
+            ("A-1",),
+        ).fetchone()[0]
+    assert state == CANCELLED
