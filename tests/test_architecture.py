@@ -185,7 +185,6 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
         "audit_overdue_work_orders",
         "auto_delete_duplicate_daily_inspection_work_orders",
         "auto_process_unclosed_ab_fault_notices",
-        "delete_unassigned_daily_inspection_work_order",
         "export_atp_fault_analysis_options",
         "export_unclosed_ab_fault_notices_from_db",
         "query_complete_periodic_inspection_work_order_status",

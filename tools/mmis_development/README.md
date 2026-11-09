@@ -1,6 +1,6 @@
 # MMIS 開發工具指令索引
 
-本頁列出 `tools/mmis_development/` 的 17 個可執行工具。從專案根目錄執行指令，先依根目錄 `README.md` 設定 MMIS 登入用的 `.env`。表格中的通報號、工作單號和車號都是可替換的範例值。
+本頁列出 `tools/mmis_development/` 的 16 個可執行工具。從專案根目錄執行指令，先依根目錄 `README.md` 設定 MMIS 登入用的 `.env`。表格中的通報號、工作單號和車號都是可替換的範例值。
 
 **讀表方式：**「輸入」只列必填命令列參數；「產出」分清終端輸出、本機檔案與 MMIS 寫入。`—` 表示沒有額外參數或檔案。除了表格標明的 SQLite、JSON、Excel 檔案，其餘查詢結果只顯示在終端，不會自動存檔。
 
@@ -30,11 +30,10 @@
 | 取消重複未派工工單 | `python -m tools.mmis_development.auto_delete_duplicate_daily_inspection_work_orders` | — | 無 | 重建 `data/auto_delete_duplicate_daily_inspection_work_orders.db`；較舊的重複工單標記「待工單取消」後依序取消，確認成功的列改為「已取消工單」；終端顯示處理筆數，無重複時印出「未發現重複的未派工日檢工單」，取消成功時逐筆印出車組/車號及工作單 |
 | 依車號和日期找工單 | `python -m tools.mmis_development.query_daily_inspection_work_orders_by_vehicle_and_date 717 '>2026/09/23'` | — | 車號、檢修日期條件；PowerShell 中以引號包住 `>` | 終端 JSON：符合條件的日檢工單清單 |
 | 勾稽故障通報 | `python -m tools.mmis_development.query_daily_inspection_work_order_by_number_and_link_fault_notice 115-1A-71002 1150923-36` | — | 日檢工作單號、通報號 | 寫入 MMIS 工單與通報的關聯；終端 JSON 回報確認結果 |
-| 取消未派工工單 | `python -m tools.mmis_development.delete_unassigned_daily_inspection_work_order 115-1A-70048` | — | 日檢工作單號 | 符合「執行中未派工」時，以「重複開單」為理由取消 MMIS 工單；終端 JSON 回報確認結果 |
 
 未送簽核清查的 `--export-xlsx` 會產生 `檢車室未填檢修人員日檢工單_程式產生MMDD.xlsx` 和 `未簽核日檢工單清查_程式產生MMDD.xlsx`。第二份收錄未出現在第一份的其他快照資料。重複未派工工具會修改 MMIS；如果取消結果不明，整批停止，資料庫中的待取消列須人工確認。
 
-「勾稽故障通報」、「取消重複未派工工單」和「取消未派工工單」會修改 MMIS。只在明確核准的受控 Live 驗證或人工操作中執行；如果寫入結果不明，先人工確認，不要直接重送。
+「勾稽故障通報」和「取消重複未派工工單」會修改 MMIS。只在明確核准的受控 Live 驗證或人工操作中執行；如果寫入結果不明，先人工確認，不要直接重送。
 
 ## 定期檢修工單（2A／3A）
 
