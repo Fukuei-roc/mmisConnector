@@ -21,6 +21,7 @@ DATABASE_RELATIVE_PATH = Path("data/auto_delete_duplicate_daily_inspection_work_
 DATABASE_PATH = Path(__file__).resolve().parents[2] / DATABASE_RELATIVE_PATH
 TABLE = "daily_inspection_work_orders"
 PENDING_CANCELLATION = "待工單取消"
+NO_DUPLICATE = "無重複"
 OPENING_DATE_FORMAT = "%Y/%m/%d %H:%M"
 
 
@@ -136,6 +137,11 @@ def update_duplicate_work_orders(
         ).fetchall()
         if current_snapshot != snapshot_rows:
             raise MMISClientError("SQLite 快照在明細查詢期間已更新，取消本次補寫")
+        connection.executemany(
+            f'UPDATE {TABLE} SET "執行結果" = ? WHERE "工作單" = ?',
+            ((NO_DUPLICATE, work_orders[0]) for work_orders in groups.values()
+             if len(work_orders) == 1),
+        )
         for vehicle in duplicates:
             connection.execute(
                 f'''UPDATE {TABLE} SET "開單日期" = '', "執行結果" = ''

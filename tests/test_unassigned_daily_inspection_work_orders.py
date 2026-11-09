@@ -96,10 +96,33 @@ def test_duplicate_group_marks_only_older_work_order(tmp_path: Path) -> None:
             'SELECT "工作單", "開單日期", "執行結果" FROM daily_inspection_work_orders ORDER BY "工作單"'
         ).fetchall()
     assert rows == [
-        ("115-1A-70001", "", ""),
+        ("115-1A-70001", "", "無重複"),
         ("115-1A-81454", "2026/11/01 08:00", PENDING_CANCELLATION),
         ("115-1A-90001", "2026/11/02 09:00", ""),
     ]
+
+
+def test_single_vehicle_marks_no_duplicate_without_detail_lookup(tmp_path: Path) -> None:
+    db = tmp_path / "single.db"
+    replace_records(
+        [
+            {"車組/車號": "EMU700", "工作單": "A-1", "預計檢修(進廠)日": "2026/11/01"},
+            {"車組/車號": "", "工作單": "B-1", "預計檢修(進廠)日": "2026/11/01"},
+        ],
+        db,
+    )
+
+    def fail_if_called(_: str) -> dict[str, str]:
+        raise AssertionError("single vehicles must not trigger detail lookup")
+
+    result = update_duplicate_work_orders(db, fail_if_called)
+
+    assert result.duplicate_groups == 0
+    with sqlite3.connect(db) as connection:
+        rows = connection.execute(
+            'SELECT "工作單", "執行結果" FROM daily_inspection_work_orders ORDER BY "工作單"'
+        ).fetchall()
+    assert rows == [("A-1", "無重複"), ("B-1", "")]
 
 
 def test_incomplete_or_tied_duplicate_groups_are_not_marked(tmp_path: Path) -> None:
