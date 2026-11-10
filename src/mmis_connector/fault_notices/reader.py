@@ -23,13 +23,13 @@ ANALYSIS_FIELDS = (
     "處理情形",
     "改善對策",
 )
-FAULT_NOTICE_RE = re.compile(r"^\d{7}-\d{2}$")
+FAULT_NOTICE_RE = re.compile(r"^[0-9]{7}-[A-Za-z0-9]{2}$")
 
 
 def normalize_fault_notice(value: str) -> str:
     fault_notice = value.strip()
     if FAULT_NOTICE_RE.fullmatch(fault_notice) is None:
-        raise MMISClientError("通報號必須符合 7 位數字-兩位數字格式")
+        raise MMISClientError("通報號必須符合 7 位數字-兩位英數字格式")
     return fault_notice
 
 

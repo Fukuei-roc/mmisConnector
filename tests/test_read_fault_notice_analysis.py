@@ -99,11 +99,16 @@ def _run(
 
 
 @pytest.mark.parametrize(
-    "value", ["", "1150828", "1150828-1", "115082-12", "A150828-12"]
+    "value", ["", "1150828", "1150828-1", "115082-12", "A150828-12",
+              "1151109-B00", "1151109-B!"]
 )
 def test_rejects_invalid_fault_notice_before_network(value: str) -> None:
     with pytest.raises(MMISClientError, match="通報號"):
         normalize_fault_notice(value)
+
+
+def test_accepts_mmis_notice_with_letter_in_suffix() -> None:
+    assert normalize_fault_notice(" 1151109-B0 ") == "1151109-B0"
 
 
 def test_run_filters_exact_notice_and_reads_five_fields(
