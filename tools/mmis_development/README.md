@@ -1,6 +1,6 @@
 # MMIS 開發工具指令索引
 
-本頁列出 `tools/mmis_development/` 的 16 個可執行工具。從專案根目錄執行指令，先依根目錄 `README.md` 設定 MMIS 登入用的 `.env`。表格中的通報號、工作單號和車號都是可替換的範例值。
+本頁列出 `tools/mmis_development/` 的 17 個可執行工具。從專案根目錄執行指令，先依根目錄 `README.md` 設定 MMIS 登入用的 `.env`。表格中的通報號、工作單號和車號都是可替換的範例值。
 
 **讀表方式：**「輸入」只列必填命令列參數；「產出」分清終端輸出、本機檔案與 MMIS 寫入。`—` 表示沒有額外參數或檔案。除了表格標明的 SQLite、JSON、Excel 檔案，其餘查詢結果只顯示在終端，不會自動存檔。
 
@@ -20,6 +20,14 @@
 `auto_process_unclosed_ab_fault_notices` 每次都重新查詢並更新 SQLite。預設只對尚未完成一般故障分析的通報執行付費 AI 資料充分性檢查；需要時也會呼叫 AI 產生分析，再寫入 MMIS。`--check-analysis-readiness` 會擴大檢查範圍，增加 API 使用量。`--export-xlsx` 只在同步和處理成功後匯出兩份檔案：`AB級未處理故障通報_程式產生MMDD.xlsx`（含「待簽核工單」，共 10 欄）及 `優先簽核工單_程式產生MMDD.xlsx`。後者會查詢待簽核工單並依 `.env` 的 `MMIS_INSPECTION_GROUP_LEADER` 篩選。獨立的 `export_unclosed_ab_fault_notices_from_db` 只讀取既有 SQLite，只產生第一份 Excel，不重新查詢或修改 MMIS。
 
 `query_fault_notice_full_detail` 不加附加參數時只查詢 MMIS；兩種 AI 參數都需要 `.env` 的 `OPENAI_API_KEY`，會使用付費 API，不寫入 MMIS。
+
+## 代理副段長進行工單批次核簽
+
+| 功能 | 指令 | 附加參數 | 輸入 | 產出 |
+|---|---|---|---|---|
+| 代理副段長批次核簽工單 | `python -m tools.mmis_development.auto_batch_approve` | — | 無；`.env` 須設定 `MMIS_DEPUTY_USERNAME` 和 `MMIS_DEPUTY_PASSWORD` | 寫入 MMIS 核簽結果；終端 JSON 回報本次已簽核的 17 類單據數量，不產生檔案 |
+
+這是使用指定副段長帳號的專用模組。指令進入「批次核簽」後先讀取全部待簽數量，再重複「全選工單 → 批次核簽 → 是 → 確定」。每輪最多核簽目前頁面 15 筆；MMIS 會自動切換到下一個仍有待簽工單的頁簽。程式每輪重新讀取數量，直到 17 類全部為零才輸出 JSON。若一開始沒有待簽工單，17 類已簽核數均為 0。頁面或數量異常時會停止並回報錯誤；寫入結果不明時，先在 MMIS 確認狀態，再決定是否重跑。
 
 ## 日檢工單（1A）
 

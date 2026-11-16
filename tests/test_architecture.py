@@ -100,6 +100,7 @@ def test_every_production_module_is_classified() -> None:
         "__init__.py",
         "__main__.py",
         "auth.py",
+        "batch_approval.py",
         "approval.py",
         "auto_link/__init__.py",
         "auto_link/orchestrator.py",
@@ -183,6 +184,7 @@ def test_development_tools_import_formal_components_not_production_cli() -> None
 
     required_tools = {
         "audit_overdue_work_orders",
+        "auto_batch_approve",
         "auto_delete_duplicate_daily_inspection_work_orders",
         "auto_process_unclosed_ab_fault_notices",
         "export_atp_fault_analysis_options",

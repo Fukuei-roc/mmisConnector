@@ -36,10 +36,14 @@ class MMISConfig:
     timeout_seconds: float = 20.0
 
     @classmethod
-    def from_env(cls, dotenv_path: str | None = None) -> "MMISConfig":
+    def from_env(
+        cls, dotenv_path: str | None = None, *, credential_prefix: str = "MMIS"
+    ) -> "MMISConfig":
         load_dotenv(dotenv_path=dotenv_path)
-        username = os.getenv("MMIS_USERNAME", "").strip()
-        password = os.getenv("MMIS_PASSWORD", "")
+        username_key = f"{credential_prefix}_USERNAME"
+        password_key = f"{credential_prefix}_PASSWORD"
+        username = os.getenv(username_key, "").strip()
+        password = os.getenv(password_key, "")
         base_url = os.getenv(
             "MMIS_BASE_URL", "https://ap.nmmis.railway.gov.tw"
         ).rstrip("/")
@@ -55,7 +59,7 @@ class MMISConfig:
             raise MMISClientError("MMIS_TIMEOUT_SECONDS 必須是數字") from exc
 
         if not username or not password:
-            raise MMISClientError(".env 缺少 MMIS_USERNAME 或 MMIS_PASSWORD")
+            raise MMISClientError(f".env 缺少 {username_key} 或 {password_key}")
         parsed = urlparse(base_url)
         if parsed.scheme != "https" or not parsed.netloc:
             raise MMISClientError("MMIS_BASE_URL 必須是有效的 HTTPS URL")

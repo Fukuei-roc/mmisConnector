@@ -34,3 +34,13 @@ def test_request_rejects_cross_origin_before_network_access() -> None:
     )
     with pytest.raises(MMISClientError, match="同源"):
         client.request("GET", "https://attacker.example/collect")
+
+
+def test_deputy_credentials_are_separate_from_default(monkeypatch) -> None:
+    monkeypatch.setenv("MMIS_USERNAME", "normal")
+    monkeypatch.setenv("MMIS_PASSWORD", "normal-secret")
+    monkeypatch.setenv("MMIS_DEPUTY_USERNAME", "deputy")
+    monkeypatch.setenv("MMIS_DEPUTY_PASSWORD", "deputy-secret")
+    config = MMISConfig.from_env(credential_prefix="MMIS_DEPUTY")
+    assert config.username == "deputy"
+    assert config.password == "deputy-secret"
